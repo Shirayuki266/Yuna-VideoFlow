@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+httpx
+pydantic
+python-dotenv
+google-genai
+sqlalchemy
+pyrogram
+yt-dlp
+edge-tts
+faster-whisper
+moviepy
+pillow
+opencv-python
