@@ -1,0 +1,6 @@
+{
+  "name": "Yuna VideoFlow",
+  "description": "Bilibili video explorer, downloader & manager with AI title translation, advanced search filters, personal video upload, storage monitor, and full video editor suite with AI Vietsub subtitles & AI voice dubbing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
