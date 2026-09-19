@@ -424,6 +424,7 @@ export default function App() {
                     onClose={() => setIsEditorModalOpen(false)}
                     initialVideo={editorVideo}
                     onVideoEdited={() => refreshCounts()}
+                    onOpenProductAnalysis={(vid) => handleOpenProductAnalysis(vid)}
                 />
             )}
 

@@ -261,8 +261,8 @@ Chỉ trả về ĐÚNG MỘT MẢNG JSON chứa chính xác ${titles.length} ch
       return this.generateFallbackSubtitles(title, duration);
     }
 
-    const prompt = `Bạn là chuyên gia dịch thuật và biên tập phụ đề video Tiếng Việt (Vietsub) chuyên nghiệp.
-Nhiệm vụ: Hãy tạo các phân đoạn phụ đề Tiếng Việt có mốc thời gian (start và end theo giây) cho video sau:
+    const prompt = `Bạn là chuyên gia dịch thuật và biên tập phụ đề video Tiếng Việt (Vietsub) chuyên nghiệp kiêm đạo diễn lồng tiếng đa vai.
+Nhiệm vụ: Hãy tạo các phân đoạn phụ đề Tiếng Việt có mốc thời gian (start và end theo giây) cho video sau, đồng thời tự động phân biệt giới tính người nói (Nam hoặc Nữ) để hệ thống lồng tiếng AI tự động đổi giọng phù hợp:
 - Tiêu đề video: ${title}
 - Mô tả / tóm tắt nội dung: ${desc || "Nội dung theo chủ đề tiêu đề"}
 - Tổng thời lượng video: ${duration} giây
@@ -272,10 +272,13 @@ YÊU CẦU QUAN TRỌNG:
 1. Tạo từ 4 đến 12 phân đoạn phụ đề trải dài từ giây 0 đến ${duration} giây.
 2. Mỗi phân đoạn kéo dài khoảng 2 đến 6 giây (ví dụ: start: 0, end: 3.5; start: 3.8, end: 7.2...).
 3. Câu văn tiếng Việt tự nhiên, ngắn gọn, súc tích, ngữ điệu cuốn hút, rất thích hợp để vừa hiển thị phụ đề vừa cho giọng đọc AI lồng tiếng.
-4. ĐẦU RA BẮT BUỘC: Đúng một mảng JSON các object theo cấu trúc:
+4. TỰ ĐỘNG PHÂN BIỆT GIỚI TÍNH NGƯỜI NÓI (speakerGender):
+   - "male": Nếu phân đoạn do giọng nam nói (ví dụ: bình luận viên nam, người dẫn nam, anh chàng, xưng "anh", "ông", "chú", ngữ khí trầm ấm, mạnh mẽ...).
+   - "female": Nếu phân đoạn do giọng nữ nói (ví dụ: nhân vật nữ, xưng "em", "chị", "cô", "nàng", ngữ khí ngọt ngào, dịu dàng, review thời trang/mỹ phẩm/ẩm thực/vlog nữ...).
+5. ĐẦU RA BẮT BUỘC: Đúng một mảng JSON các object theo cấu trúc:
 [
-  { "id": "sub_1", "start": 0.0, "end": 3.5, "text": "Câu phụ đề tiếng Việt..." },
-  { "id": "sub_2", "start": 3.8, "end": 7.0, "text": "Câu phụ đề tiếp theo..." }
+  { "id": "sub_1", "start": 0.0, "end": 3.5, "text": "Câu phụ đề tiếng Việt...", "speakerGender": "male" },
+  { "id": "sub_2", "start": 3.8, "end": 7.0, "text": "Câu phụ đề tiếp theo...", "speakerGender": "female" }
 ]
 Không thêm văn bản giải thích nào khác ngoài chuỗi JSON.`;
 
@@ -305,12 +308,22 @@ Không thêm văn bản giải thích nào khác ngoài chuỗi JSON.`;
         if (Array.isArray(parsed) && parsed.length > 0) {
           this.activeModel = model;
           console.log(`[GEMINI VIETSUB]: Successfully generated ${parsed.length} subtitles using ${model}`);
-          return parsed.map((item, index) => ({
-            id: item.id || `sub_${index + 1}`,
-            start: Number(item.start) || Number(index * 4),
-            end: Number(item.end) || Number((index + 1) * 4),
-            text: String(item.text || "").trim()
-          }));
+          return parsed.map((item, index) => {
+            const rawGender = String(item.speakerGender || "").toLowerCase();
+            const inferredGender = rawGender.includes("fe") || rawGender.includes("nữ")
+              ? "female"
+              : rawGender.includes("male") || rawGender.includes("nam")
+              ? "male"
+              : this.inferGenderFromText(String(item.text || ""), index % 2 === 0 ? "male" : "female");
+
+            return {
+              id: item.id || `sub_${index + 1}`,
+              start: Number(item.start) || Number(index * 4),
+              end: Number(item.end) || Number((index + 1) * 4),
+              text: String(item.text || "").trim(),
+              speakerGender: inferredGender
+            };
+          });
         }
       } catch (err: any) {
         if (this.isQuotaError(err)) {
@@ -475,13 +488,141 @@ YÊU CẦU: Trả về đúng một mảng JSON với số lượng phần tử 
     };
   }
 
-  private generateFallbackSubtitles(title: string, duration: number): Array<{ id: string; start: number; end: number; text: string }> {
+  /**
+   * Smart heuristic analysis of Vietnamese text to infer speaker gender (Nam/Nữ)
+   */
+  public inferGenderFromText(text: string, defaultGender: "male" | "female" = "male"): "male" | "female" {
+    if (!text) return defaultGender;
+    const lower = text.toLowerCase();
+
+    // Female pronouns, addressing, tone indicators
+    const femaleMarkers = [
+      /\b(em|chị|cô|bà|nàng|tiểu thư|mẹ|má|nữ|gái|bác gái|chị em|phụ nữ|bạn gái|nữ chính)\b/i,
+      /\b(dạ|ạ|nha|nhé|hihi|ơi|nà|nghen|chụt|yêu quá)\b/i,
+      /\b(váy|son|mỹ phẩm|trang điểm|skincare|nước hoa|làm đẹp|nấu ăn|tóc đẹp)\b/i
+    ];
+
+    // Male pronouns, addressing, tone indicators
+    const maleMarkers = [
+      /\b(anh|ông|chú|bác|chàng|thằng|bố|ba|cha|nam|trai|bác trai|anh em|đàn ông|bạn trai|nam chính)\b/i,
+      /\b(hắn|gã|lão|huynh|đệ|đại ca|tiểu đệ|ông anh)\b/i,
+      /\b(game thủ|công nghệ|xe cộ|độ xe|bóng đá|thể thao|chiến đấu|sức mạnh|cơ bắp)\b/i
+    ];
+
+    let femaleScore = 0;
+    let maleScore = 0;
+
+    for (const r of femaleMarkers) {
+      const m = lower.match(r);
+      if (m) femaleScore += m.length;
+    }
+
+    for (const r of maleMarkers) {
+      const m = lower.match(r);
+      if (m) maleScore += m.length;
+    }
+
+    if (femaleScore > maleScore) return "female";
+    if (maleScore > femaleScore) return "male";
+
+    return defaultGender;
+  }
+
+  /**
+   * AI-powered batch speaker gender detection for subtitles
+   */
+  public async detectSpeakerGenders(
+    subtitles: Array<{ id: string; text: string; start?: number; end?: number; speakerGender?: string }>,
+    model?: string
+  ): Promise<Array<{ id: string; speakerGender: "male" | "female"; reason?: string }>> {
+    if (!subtitles || subtitles.length === 0) return [];
+
+    const client = this.getClient();
+    if (!client) {
+      return subtitles.map((s, idx) => ({
+        id: s.id,
+        speakerGender: this.inferGenderFromText(s.text, idx % 2 === 0 ? "male" : "female"),
+        reason: "Heuristic pattern analysis"
+      }));
+    }
+
+    const itemsForAI = subtitles.map(s => ({
+      id: s.id,
+      text: s.text
+    }));
+
+    const prompt = `Bạn là đạo diễn lồng tiếng video chuyên nghiệp. Hãy phân tích danh sách các câu phụ đề/hội thoại sau và xác định giới tính của người nói (speakerGender) cho từng câu là "male" (giọng nam) hay "female" (giọng nữ).
+Căn cứ vào:
+- Đại từ xưng hô (anh/em, chú/cháu, ông/bà...)
+- Ngữ cảnh hội thoại (ai đang nói với ai, đối thoại qua lại)
+- Ngữ khí, chủ đề, vai diễn nhân vật
+
+Danh sách phụ đề:
+${JSON.stringify(itemsForAI, null, 2)}
+
+YÊU CẦU: Trả về đúng một mảng JSON các object theo cấu trúc:
+[
+  { "id": "...", "speakerGender": "male" hoặc "female", "reason": "lý do ngắn gọn" }
+]
+Không thêm bất kỳ văn bản nào ngoài chuỗi JSON.`;
+
+    const requestedModel = this.normalizeTextModel(model || "gemini-3.8-flash");
+    const modelsToTry = [requestedModel, "gemini-3.8-flash", "gemini-3.1-flash-lite"];
+
+    for (const m of modelsToTry) {
+      try {
+        const response = await client.models.generateContent({
+          model: m,
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json",
+            temperature: 0.2
+          }
+        });
+
+        const rawText = response.text ? response.text.trim() : "";
+        const cleanText = rawText.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+        const parsed = JSON.parse(cleanText);
+
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const map = new Map<string, { speakerGender: "male" | "female"; reason?: string }>();
+          for (const item of parsed) {
+            if (item.id) {
+              const g = item.speakerGender === "female" ? "female" : "male";
+              map.set(item.id, { speakerGender: g, reason: item.reason || "" });
+            }
+          }
+
+          return subtitles.map((s, idx) => {
+            const found = map.get(s.id);
+            if (found) return { id: s.id, speakerGender: found.speakerGender, reason: found.reason };
+            return {
+              id: s.id,
+              speakerGender: this.inferGenderFromText(s.text, idx % 2 === 0 ? "male" : "female"),
+              reason: "Heuristic fallback"
+            };
+          });
+        }
+      } catch (err) {
+        console.warn(`[GEMINI GENDER DETECT ERROR with ${m}]:`, err);
+      }
+    }
+
+    // Fallback heuristic
+    return subtitles.map((s, idx) => ({
+      id: s.id,
+      speakerGender: this.inferGenderFromText(s.text, idx % 2 === 0 ? "male" : "female"),
+      reason: "NLP Heuristic analysis"
+    }));
+  }
+
+  private generateFallbackSubtitles(title: string, duration: number): Array<{ id: string; start: number; end: number; text: string; speakerGender: "male" | "female" }> {
     const step = Math.max(3, Math.min(6, Math.floor(duration / 4)));
     return [
-      { id: "sub_1", start: 0, end: Math.min(step, duration), text: `Chào mừng bạn đến với video: ${title}` },
-      { id: "sub_2", start: step, end: Math.min(step * 2, duration), text: "Hôm nay chúng ta sẽ cùng khám phá những chi tiết thú vị nhất." },
-      { id: "sub_3", start: step * 2, end: Math.min(step * 3, duration), text: "Hãy chú ý theo dõi các diễn biến nổi bật tiếp theo nhé!" },
-      { id: "sub_4", start: step * 3, end: duration, text: "Cảm ơn các bạn đã theo dõi, đừng quên lưu lại video này nhé!" }
+      { id: "sub_1", start: 0, end: Math.min(step, duration), text: `Chào mừng bạn đến với video: ${title}`, speakerGender: "male" },
+      { id: "sub_2", start: step, end: Math.min(step * 2, duration), text: "Hôm nay chúng ta sẽ cùng khám phá những chi tiết thú vị nhất.", speakerGender: "female" },
+      { id: "sub_3", start: step * 2, end: Math.min(step * 3, duration), text: "Hãy chú ý theo dõi các diễn biến nổi bật tiếp theo nhé!", speakerGender: "male" },
+      { id: "sub_4", start: step * 3, end: duration, text: "Cảm ơn các bạn đã theo dõi, đừng quên lưu lại video này nhé!", speakerGender: "female" }
     ];
   }
 

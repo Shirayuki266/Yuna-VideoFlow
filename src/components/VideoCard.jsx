@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { Download, Loader2, CheckCircle2, AlertCircle, ExternalLink, Play, RotateCw, Check, ShoppingBag } from 'lucide-react';
+import { Download, Loader2, CheckCircle2, AlertCircle, ExternalLink, Play, RotateCw, Check, ShoppingBag, Scissors } from 'lucide-react';
 
 // Helper format lượt xem
 function formatViews(views) {
@@ -144,10 +144,10 @@ export default function VideoCard({ video, onDownloadSuccess, onPlayVideo, onAna
                 e.stopPropagation();
                 onAnalyzeProducts && onAnalyzeProducts(video);
               }}
-              className="bg-[#ee4d2d]/90 hover:bg-[#ee4d2d] text-white text-xs px-2.5 py-1 rounded-full flex items-center gap-1 backdrop-blur-sm shadow-md transition-transform hover:scale-105"
-              title="Phân tích sản phẩm trong video để tra cứu Shopee"
+              className="bg-[#ee4d2d]/95 hover:bg-[#ee4d2d] text-white text-xs px-2.5 py-1 rounded-full flex items-center gap-1 backdrop-blur-sm shadow-md transition-transform hover:scale-105 font-medium"
+              title="Cắt video thành các khung hình ảnh & AI phân tích sản phẩm trên Shopee"
             >
-              <ShoppingBag className="w-3 h-3" /> Soi Shopee
+              <Scissors className="w-3 h-3 text-amber-200" /> Cắt Khung & Soi Shopee
             </button>
           </div>
         </a>
@@ -231,10 +231,10 @@ export default function VideoCard({ video, onDownloadSuccess, onPlayVideo, onAna
                     onAnalyzeProducts && onAnalyzeProducts(video);
                   }}
                   className="w-full py-2 px-2 bg-orange-500/20 hover:bg-[#ee4d2d] text-orange-300 hover:text-white border border-orange-500/40 hover:border-[#ee4d2d] rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition-all shadow-sm truncate"
-                  title="Phân tích sản phẩm trong video và tra cứu Shopee Việt Nam"
+                  title="Cắt video thành các khung hình ảnh & AI phân tích sản phẩm trên Shopee"
                 >
-                  <ShoppingBag className="w-3.5 h-3.5 flex-shrink-0 text-orange-400" />
-                  <span className="truncate">Soi Shopee</span>
+                  <Scissors className="w-3.5 h-3.5 flex-shrink-0 text-orange-400" />
+                  <span className="truncate">Cắt Khung & Soi Shopee</span>
                 </button>
               </div>
             )}

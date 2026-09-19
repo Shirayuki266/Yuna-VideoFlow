@@ -9,19 +9,31 @@ export interface SubtitleItem {
   end: number;   // in seconds
   text: string;  // Vietnamese subtitle
   originalText?: string;
+  speakerGender?: "male" | "female" | "auto"; // Auto / Male / Female speaker
+  speakerRole?: string;
+  customVoice?: string;
 }
 
 export interface SubtitleStyle {
-  fontSize: number;  // 14 to 36
+  fontSize: number;  // 12 to 64
+  scale: number;     // 0.5 to 3.0
   color: string;     // hex or color
   bgColor: string;   // hex or rgba
-  position: "bottom" | "top" | "middle";
+  position?: "bottom" | "top" | "middle" | "custom";
+  x: number;         // 0 to 100 (% from left)
+  y: number;         // 0 to 100 (% from top)
+  maxWidthPercent?: number; // 20 to 100 (% of video width)
   stroke: boolean;
 }
 
 export interface DubbingConfig {
   enabled: boolean;
   voiceName?: string;
+  autoGenderDetect: boolean;   // Auto switch male vs female voice
+  maleVoice?: string;          // Gemini male voice (e.g. Charon / Puck / Fenrir)
+  femaleVoice?: string;        // Gemini female voice (e.g. Zephyr / Kore)
+  maleVoiceURI?: string;       // Browser male voice
+  femaleVoiceURI?: string;     // Browser female voice
   rate: number;                // 0.75 to 1.75
   pitch: number;               // 0.8 to 1.3
   originalAudioVolume: number; // 0.0 to 1.0 (e.g. 0.15 for audio ducking, 0 for mute)
@@ -90,15 +102,24 @@ export class EditorService {
 
     const defaultStyle: SubtitleStyle = {
       fontSize: 20,
+      scale: 1.0,
       color: "#ffffff",
       bgColor: "rgba(0, 0, 0, 0.75)",
       position: "bottom",
+      x: 50,
+      y: 85,
+      maxWidthPercent: 90,
       stroke: true
     };
 
     const defaultDubbing: DubbingConfig = {
       enabled: false,
       voiceName: "",
+      autoGenderDetect: true,
+      maleVoice: "Charon",
+      femaleVoice: "Zephyr",
+      maleVoiceURI: "",
+      femaleVoiceURI: "",
       rate: 1.0,
       pitch: 1.0,
       originalAudioVolume: 0.2, // 20% background ducking

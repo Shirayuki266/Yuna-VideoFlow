@@ -33,7 +33,17 @@ import {
   Flame,
   Headphones,
   MessageSquareText,
-  LogOut
+  LogOut,
+  Move,
+  ZoomIn,
+  ZoomOut,
+  User,
+  Users,
+  Maximize2,
+  Minimize2,
+  AlignCenter,
+  ShoppingBag,
+  Scissors
 } from 'lucide-react';
 
 export const DEFAULT_GEMINI_MODULES = [
@@ -93,15 +103,29 @@ export const DEFAULT_GEMINI_MODULES = [
   }
 ];
 
-export const GEMINI_VOICES = [
-  { id: 'Zephyr', name: 'Zephyr (Nữ)', desc: 'Trong trẻo, cuốn hút, truyền cảm', tag: 'Phổ biến' },
-  { id: 'Puck', name: 'Puck (Nam)', desc: 'Trẻ trung, năng động, tươi vui', tag: 'Shorts/Reels' },
-  { id: 'Charon', name: 'Charon (Nam)', desc: 'Trầm ấm, uy tín, tài liệu/review', tag: 'Review/Phim' },
-  { id: 'Kore', name: 'Kore (Nữ)', desc: 'Dịu dàng, tâm sự, sâu lắng', tag: 'Kể chuyện' },
-  { id: 'Fenrir', name: 'Fenrir (Nam)', desc: 'Mạnh mẽ, kịch tính, hùng tráng', tag: 'Hành động' }
+export const GEMINI_MALE_VOICES = [
+  { id: 'Charon', name: 'Charon (Nam)', gender: 'male', desc: 'Trầm ấm, uy tín, tài liệu/review', tag: 'Review/Kể chuyện' },
+  { id: 'Puck', name: 'Puck (Nam)', gender: 'male', desc: 'Trẻ trung, năng động, tươi vui', tag: 'Shorts/TikTok' },
+  { id: 'Fenrir', name: 'Fenrir (Nam)', gender: 'male', desc: 'Mạnh mẽ, kịch tính, dứt khoát', tag: 'Hành động' }
 ];
 
-export default function VideoEditorModal({ isOpen, onClose, initialVideo = null, onVideoEdited }) {
+export const GEMINI_FEMALE_VOICES = [
+  { id: 'Zephyr', name: 'Zephyr (Nữ)', gender: 'female', desc: 'Trong trẻo, cuốn hút, truyền cảm', tag: 'Chuẩn & Cuốn hút' },
+  { id: 'Kore', name: 'Kore (Nữ)', gender: 'female', desc: 'Dịu dàng, tâm sự, sâu lắng', tag: 'Tâm sự/Vlog' }
+];
+
+export const GEMINI_VOICES = [
+  ...GEMINI_FEMALE_VOICES,
+  ...GEMINI_MALE_VOICES
+];
+
+export default function VideoEditorModal({
+  isOpen,
+  onClose,
+  initialVideo = null,
+  onVideoEdited,
+  onOpenProductAnalysis
+}) {
   // Selected video state
   const [selectedVideo, setSelectedVideo] = useState(initialVideo);
   const [selectableVideos, setSelectableVideos] = useState([]);
@@ -134,18 +158,32 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
   const [isGeneratingVietsub, setIsGeneratingVietsub] = useState(false);
   const [vietsubStyle, setVietsubStyle] = useState('natural');
 
-  // Subtitle styling state
+  // Subtitle styling state (Hỗ trợ kéo thả tự do X, Y và phóng to thu nhỏ scale/fontSize)
+  const videoContainerRef = useRef(null);
+  const [isDraggingSub, setIsDraggingSub] = useState(false);
+  const isDraggingSubRef = useRef(false);
   const [subtitleStyle, setSubtitleStyle] = useState({
     fontSize: 20,
+    scale: 1.0,
     color: '#facc15', // yellow
     bgColor: 'rgba(0, 0, 0, 0.75)',
-    position: 'bottom', // 'bottom' | 'top' | 'middle'
+    position: 'custom', // 'bottom' | 'top' | 'middle' | 'custom'
+    x: 50, // 0 - 100 (% horizontal)
+    y: 85, // 0 - 100 (% vertical)
+    maxWidthPercent: 90, // 20 - 100 (% width)
     stroke: true
   });
 
-  // AI Dubbing state
+  // AI Dubbing state (Hỗ trợ tự động phân biệt giọng Nam và Nữ)
   const [availableVoices, setAvailableVoices] = useState([]);
   const [selectedVoiceURI, setSelectedVoiceURI] = useState('');
+  const [autoGenderDetect, setAutoGenderDetect] = useState(true); // Tự động đổi giọng Nam / Nữ
+  const [geminiMaleVoice, setGeminiMaleVoice] = useState('Charon'); // Mặc định giọng nam
+  const [geminiFemaleVoice, setGeminiFemaleVoice] = useState('Zephyr'); // Mặc định giọng nữ
+  const [browserMaleVoiceURI, setBrowserMaleVoiceURI] = useState('');
+  const [browserFemaleVoiceURI, setBrowserFemaleVoiceURI] = useState('');
+  const [isDetectingGenders, setIsDetectingGenders] = useState(false);
+  const [currentSpeakerInfo, setCurrentSpeakerInfo] = useState(null); // { gender: 'male'|'female', voice: string }
   const [voiceRate, setVoiceRate] = useState(1.0);
   const [voicePitch, setVoicePitch] = useState(1.0);
   const [isDubbingEnabled, setIsDubbingEnabled] = useState(true);
@@ -255,10 +293,22 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
             initDefaultSubtitles();
           }
           if (p.subtitleStyle) {
-            setSubtitleStyle((prev) => ({ ...prev, ...p.subtitleStyle }));
+            setSubtitleStyle((prev) => ({
+              ...prev,
+              ...p.subtitleStyle,
+              x: p.subtitleStyle.x !== undefined ? p.subtitleStyle.x : 50,
+              y: p.subtitleStyle.y !== undefined ? p.subtitleStyle.y : 85,
+              scale: p.subtitleStyle.scale !== undefined ? p.subtitleStyle.scale : 1.0,
+              maxWidthPercent: p.subtitleStyle.maxWidthPercent !== undefined ? p.subtitleStyle.maxWidthPercent : 90
+            }));
           }
           if (p.dubbing) {
             setIsDubbingEnabled(p.dubbing.enabled ?? true);
+            if (p.dubbing.autoGenderDetect !== undefined) setAutoGenderDetect(p.dubbing.autoGenderDetect);
+            if (p.dubbing.maleVoice) setGeminiMaleVoice(p.dubbing.maleVoice);
+            if (p.dubbing.femaleVoice) setGeminiFemaleVoice(p.dubbing.femaleVoice);
+            if (p.dubbing.maleVoiceURI) setBrowserMaleVoiceURI(p.dubbing.maleVoiceURI);
+            if (p.dubbing.femaleVoiceURI) setBrowserFemaleVoiceURI(p.dubbing.femaleVoiceURI);
             if (p.dubbing.rate) setVoiceRate(p.dubbing.rate);
             if (p.dubbing.pitch) setVoicePitch(p.dubbing.pitch);
             if (p.dubbing.originalAudioVolume !== undefined) {
@@ -304,17 +354,28 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
         const voices = window.speechSynthesis.getVoices();
         setAvailableVoices(voices);
 
-        // Auto-select Vietnamese voice if available
-        const viVoice = voices.find(
+        // Auto-select Vietnamese voice or gender-specific voices if available
+        const viVoices = voices.filter(
           (v) =>
             v.lang.toLowerCase().includes('vi') ||
             v.name.toLowerCase().includes('vietnam') ||
             v.name.toLowerCase().includes('tiếng việt')
         );
-        if (viVoice) {
-          setSelectedVoiceURI(viVoice.voiceURI);
-        } else if (voices.length > 0 && !selectedVoiceURI) {
-          setSelectedVoiceURI(voices[0].voiceURI);
+
+        const primaryViVoice = viVoices[0] || voices[0];
+        if (primaryViVoice && !selectedVoiceURI) {
+          setSelectedVoiceURI(primaryViVoice.voiceURI);
+        }
+
+        // Auto-detect browser male / female voices
+        const femaleCandidate = viVoices.find(v => /female|nữ|zira|samantha|mai|linh/i.test(v.name)) || primaryViVoice;
+        const maleCandidate = viVoices.find(v => /male|nam|david|george/i.test(v.name)) || voices.find(v => /male|nam|david/i.test(v.name)) || primaryViVoice;
+
+        if (femaleCandidate && !browserFemaleVoiceURI) {
+          setBrowserFemaleVoiceURI(femaleCandidate.voiceURI);
+        }
+        if (maleCandidate && !browserMaleVoiceURI) {
+          setBrowserMaleVoiceURI(maleCandidate.voiceURI);
         }
       }
     };
@@ -338,11 +399,75 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
     }
   }, [originalVolume, isOriginalMuted]);
 
+  // Gender inference heuristics for Vietnamese text
+  const inferSubtitleGender = (text, index = 0) => {
+    if (!text) return index % 2 === 0 ? 'male' : 'female';
+    const lower = text.toLowerCase();
+    const femaleWords = [
+      'em', 'chị', 'cô', 'bà', 'nàng', 'tiểu thư', 'mẹ', 'má', 'nữ', 'gái',
+      'bác gái', 'chị em', 'bạn gái', 'dạ', 'ạ', 'nha', 'nhé', 'hihi', 'ơi',
+      'nghen', 'yêu quá', 'váy', 'son', 'mỹ phẩm', 'trang điểm', 'skincare', 'nấu ăn'
+    ];
+    const maleWords = [
+      'anh', 'ông', 'chú', 'bác', 'chàng', 'thằng', 'bố', 'ba', 'cha', 'nam',
+      'trai', 'bác trai', 'anh em', 'đàn ông', 'bạn trai', 'hắn', 'gã', 'lão',
+      'huynh', 'đệ', 'đại ca', 'xe cộ', 'độ xe', 'bóng đá', 'game thủ', 'chiến đấu'
+    ];
+    let fCount = 0;
+    let mCount = 0;
+    femaleWords.forEach(w => { if (lower.includes(w)) fCount += 1.5; });
+    maleWords.forEach(w => { if (lower.includes(w)) mCount += 1.5; });
+    if (fCount > mCount) return 'female';
+    if (mCount > fCount) return 'male';
+    return index % 2 === 0 ? 'male' : 'female';
+  };
+
+  const getEffectiveGender = (sub, index = 0) => {
+    if (!sub) return 'male';
+    if (sub.speakerGender === 'male') return 'male';
+    if (sub.speakerGender === 'female') return 'female';
+    return inferSubtitleGender(sub.text, index);
+  };
+
+  // AI Batch Gender Detection
+  const handleAutoDetectAllGenders = async () => {
+    if (subtitles.length === 0) {
+      showToast('Chưa có phụ đề để phân tích giọng Nam/Nữ.');
+      return;
+    }
+    setIsDetectingGenders(true);
+    try {
+      const res = await axios.post('/api/editor/detect-genders', {
+        subtitles,
+        model: selectedVietsubModel || 'gemini-3.8-flash'
+      });
+      if (res.data?.success && Array.isArray(res.data.data)) {
+        const genderMap = new Map(res.data.data.map(d => [d.id, d.speakerGender]));
+        setSubtitles(prev => prev.map((s, idx) => {
+          const g = genderMap.get(s.id) || inferSubtitleGender(s.text, idx);
+          return { ...s, speakerGender: g };
+        }));
+        showToast('✨ AI đã nhận diện và phân vai giọng Nam / Nữ cho toàn bộ phụ đề!');
+      } else {
+        throw new Error('Local fallback');
+      }
+    } catch {
+      setSubtitles(prev => prev.map((s, idx) => ({
+        ...s,
+        speakerGender: inferSubtitleGender(s.text, idx)
+      })));
+      showToast('⚡ Đã tự động phân vai giọng Nam / Nữ theo ngữ cảnh câu thoại!');
+    } finally {
+      setIsDetectingGenders(false);
+    }
+  };
+
   // Find active subtitle matching currentTime
   useEffect(() => {
-    const found = subtitles.find(
+    const foundIndex = subtitles.findIndex(
       (s) => currentTime >= s.start && currentTime <= s.end
     );
+    const found = foundIndex !== -1 ? subtitles[foundIndex] : null;
     setActiveSubtitle(found || null);
 
     // AI Dubbing synchronized speech trigger
@@ -354,28 +479,51 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
       found.text.trim()
     ) {
       lastSpokenSubIdRef.current = found.id;
-      playOrSpeakText(found.text);
+      playOrSpeakText(found.text, null, found, foundIndex);
     }
-  }, [currentTime, subtitles, isDubbingEnabled, isPlaying, dubbingEngine, selectedDubbingModel, geminiVoice, cachedAudio]);
+  }, [
+    currentTime,
+    subtitles,
+    isDubbingEnabled,
+    isPlaying,
+    dubbingEngine,
+    selectedDubbingModel,
+    geminiVoice,
+    geminiMaleVoice,
+    geminiFemaleVoice,
+    autoGenderDetect,
+    cachedAudio
+  ]);
 
-  // Browser speech synthesis function
-  const speakText = (text, onFinish) => {
+  // Browser speech synthesis function with gender awareness
+  const speakText = (text, onFinish, gender = 'female') => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
     try {
       window.speechSynthesis.cancel(); // cancel any ongoing speech
 
       const utterance = new SpeechSynthesisUtterance(text);
-      if (selectedVoiceURI) {
-        const voiceObj = availableVoices.find((v) => v.voiceURI === selectedVoiceURI);
-        if (voiceObj) utterance.voice = voiceObj;
+      let targetVoice = null;
+      const targetURI = gender === 'male' ? browserMaleVoiceURI : browserFemaleVoiceURI;
+      if (targetURI) {
+        targetVoice = availableVoices.find((v) => v.voiceURI === targetURI);
       }
+      if (!targetVoice && selectedVoiceURI) {
+        targetVoice = availableVoices.find((v) => v.voiceURI === selectedVoiceURI);
+      }
+      if (targetVoice) utterance.voice = targetVoice;
+
       utterance.rate = voiceRate;
-      utterance.pitch = voicePitch;
+      // If male: slightly lower pitch; if female: normal or slightly higher
+      utterance.pitch = gender === 'male' ? Math.max(0.7, voicePitch * 0.88) : Math.min(1.3, voicePitch * 1.05);
       utterance.volume = aiVolume;
+
+      setCurrentSpeakerInfo({
+        gender,
+        voice: targetVoice ? targetVoice.name : (gender === 'male' ? 'Trình duyệt Nam' : 'Trình duyệt Nữ')
+      });
 
       utterance.onstart = () => {
         setIsSpeaking(true);
-        // Audio ducking: lower video volume if enabled
         if (autoDuck && videoRef.current && !isOriginalMuted) {
           videoRef.current.volume = Math.min(originalVolume, 0.08);
         }
@@ -383,7 +531,7 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
 
       utterance.onend = () => {
         setIsSpeaking(false);
-        // Restore video volume
+        setCurrentSpeakerInfo(null);
         if (autoDuck && videoRef.current && !isOriginalMuted) {
           videoRef.current.volume = originalVolume;
         }
@@ -392,6 +540,7 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
 
       utterance.onerror = () => {
         setIsSpeaking(false);
+        setCurrentSpeakerInfo(null);
         if (autoDuck && videoRef.current && !isOriginalMuted) {
           videoRef.current.volume = originalVolume;
         }
@@ -403,12 +552,18 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
     }
   };
 
-  // Dual-engine speech player: Gemini Cloud Audio or Browser Speech
-  const playOrSpeakText = async (text, onFinish) => {
+  // Dual-engine speech player: Gemini Cloud Audio or Browser Speech with Smart Dual Gender
+  const playOrSpeakText = async (text, onFinish, targetSubItem = null, subIndex = 0) => {
     if (!text || !text.trim()) return;
 
+    const activeSub = targetSubItem || activeSubtitle;
+    const gender = autoGenderDetect ? getEffectiveGender(activeSub, subIndex) : 'female';
+
     if (dubbingEngine === 'gemini') {
-      const cacheKey = `${selectedDubbingModel}_${geminiVoice}_${text.trim()}`;
+      const voiceToUse = gender === 'male' ? geminiMaleVoice : geminiFemaleVoice;
+      setCurrentSpeakerInfo({ gender, voice: voiceToUse });
+
+      const cacheKey = `${selectedDubbingModel}_${voiceToUse}_${text.trim()}`;
       if (cachedAudio[cacheKey]) {
         try {
           const item = cachedAudio[cacheKey];
@@ -420,6 +575,7 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
           }
           audio.onended = () => {
             setIsSpeaking(false);
+            setCurrentSpeakerInfo(null);
             if (autoDuck && videoRef.current && !isOriginalMuted) {
               videoRef.current.volume = originalVolume;
             }
@@ -427,6 +583,7 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
           };
           audio.onerror = () => {
             setIsSpeaking(false);
+            setCurrentSpeakerInfo(null);
             if (autoDuck && videoRef.current && !isOriginalMuted) {
               videoRef.current.volume = originalVolume;
             }
@@ -443,7 +600,7 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
         const res = await axios.post('/api/editor/gemini-tts', {
           text,
           model: selectedDubbingModel,
-          voiceName: geminiVoice
+          voiceName: voiceToUse
         });
 
         if (res.data?.success && res.data.audioBase64) {
@@ -460,6 +617,7 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
           }
           audio.onended = () => {
             setIsSpeaking(false);
+            setCurrentSpeakerInfo(null);
             if (autoDuck && videoRef.current && !isOriginalMuted) {
               videoRef.current.volume = originalVolume;
             }
@@ -467,6 +625,7 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
           };
           audio.onerror = () => {
             setIsSpeaking(false);
+            setCurrentSpeakerInfo(null);
             if (autoDuck && videoRef.current && !isOriginalMuted) {
               videoRef.current.volume = originalVolume;
             }
@@ -482,12 +641,71 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
     }
 
     // Fallback to browser synthesis
-    speakText(text, onFinish);
+    speakText(text, onFinish, gender);
   };
 
-  const handlePreviewVoice = (customText) => {
+  const handlePreviewVoice = (customText, forceGender = null) => {
     const sample = customText || activeSubtitle?.text || 'Xin chào! Đây là giọng đọc AI lồng tiếng tiếng Việt cực chuẩn từ Gemini.';
-    playOrSpeakText(sample);
+    const subObj = forceGender ? { speakerGender: forceGender, text: sample } : activeSubtitle;
+    playOrSpeakText(sample, null, subObj, 0);
+  };
+
+  // Free-form Subtitle Drag & Drop & Zoom Handlers
+  const handleSubtitlePointerDown = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    isDraggingSubRef.current = true;
+    setIsDraggingSub(true);
+  };
+
+  const handleContainerPointerMove = (e) => {
+    if (!isDraggingSubRef.current || !videoContainerRef.current) return;
+    const rect = videoContainerRef.current.getBoundingClientRect();
+    const clientX = e.clientX ?? (e.touches && e.touches[0]?.clientX);
+    const clientY = e.clientY ?? (e.touches && e.touches[0]?.clientY);
+    if (clientX === undefined || clientY === undefined) return;
+
+    const x = Math.min(95, Math.max(5, ((clientX - rect.left) / rect.width) * 100));
+    const y = Math.min(95, Math.max(5, ((clientY - rect.top) / rect.height) * 100));
+    setSubtitleStyle((prev) => ({
+      ...prev,
+      position: 'custom',
+      x: Math.round(x * 10) / 10,
+      y: Math.round(y * 10) / 10
+    }));
+  };
+
+  const handleContainerPointerUp = () => {
+    if (isDraggingSubRef.current) {
+      isDraggingSubRef.current = false;
+      setIsDraggingSub(false);
+    }
+  };
+
+  const handleZoomSubIn = () => {
+    setSubtitleStyle((prev) => {
+      const newScale = Math.min(2.5, Math.round(((prev.scale || 1.0) + 0.1) * 100) / 100);
+      return { ...prev, scale: newScale };
+    });
+  };
+
+  const handleZoomSubOut = () => {
+    setSubtitleStyle((prev) => {
+      const newScale = Math.max(0.5, Math.round(((prev.scale || 1.0) - 0.1) * 100) / 100);
+      return { ...prev, scale: newScale };
+    });
+  };
+
+  const handleResetSubTransform = () => {
+    setSubtitleStyle((prev) => ({
+      ...prev,
+      position: 'custom',
+      x: 50,
+      y: 85,
+      scale: 1.0,
+      fontSize: 20
+    }));
+    showToast('Đã đặt lại vị trí phụ đề về giữa dưới và kích thước chuẩn 1.0x');
   };
 
   // Video playback handlers
@@ -616,6 +834,11 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
           engine: dubbingEngine,
           geminiModel: selectedDubbingModel,
           geminiVoice,
+          autoGenderDetect,
+          maleVoice: geminiMaleVoice,
+          femaleVoice: geminiFemaleVoice,
+          maleVoiceURI: browserMaleVoiceURI,
+          femaleVoiceURI: browserFemaleVoiceURI,
           voiceName: selectedVoiceURI,
           rate: voiceRate,
           pitch: voicePitch,
@@ -777,6 +1000,20 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
 
           {/* Quick actions */}
           <div className="flex items-center gap-2 flex-shrink-0">
+            {onOpenProductAnalysis && selectedVideo && (
+              <button
+                id="editor-open-product-analysis-btn"
+                type="button"
+                onClick={() => onOpenProductAnalysis(selectedVideo)}
+                className="px-3 py-1.5 bg-gradient-to-r from-orange-600 via-amber-600 to-orange-500 hover:from-orange-500 hover:to-amber-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+                title="Cắt video này thành các khung hình ảnh để AI phân tích sản phẩm trên Shopee"
+              >
+                <Scissors className="w-3.5 h-3.5 text-amber-200" />
+                <span className="hidden md:inline">Cắt Khung & Soi Shopee</span>
+                <span className="md:hidden">Soi Shopee</span>
+              </button>
+            )}
+
             <button
               onClick={() => setIsPickerOpen(true)}
               className="px-3 py-1.5 bg-slate-700/80 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-colors border border-slate-600/50"
@@ -812,13 +1049,19 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
           
           {/* Left Column: Video Player with Realtime Subtitle Overlay & Audio Controls */}
           <div className="lg:w-7/12 flex flex-col gap-3">
-            {/* Video Container with Dynamic Subtitle Overlay */}
-            <div className="relative bg-black rounded-2xl overflow-hidden border border-slate-800 shadow-xl flex items-center justify-center aspect-video group">
+            {/* Video Container with Dynamic Subtitle Overlay & Free-form Drag-and-Drop */}
+            <div
+              ref={videoContainerRef}
+              onPointerMove={handleContainerPointerMove}
+              onPointerUp={handleContainerPointerUp}
+              onPointerLeave={handleContainerPointerUp}
+              className="relative bg-black rounded-2xl overflow-hidden border border-slate-800 shadow-xl flex items-center justify-center aspect-video group select-none touch-none"
+            >
               {selectedVideo?.streamUrl ? (
                 <video
                   ref={videoRef}
                   src={selectedVideo.streamUrl}
-                  className="w-full h-full object-contain"
+                  className="w-full h-full object-contain pointer-events-none"
                   onTimeUpdate={handleTimeUpdate}
                   onLoadedMetadata={handleLoadedMetadata}
                   onPlay={() => setIsPlaying(true)}
@@ -839,38 +1082,97 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
                 </div>
               )}
 
-              {/* Dynamic Live Subtitle Overlay */}
+              {/* Quick Subtitle Floating Controls on Top-Right */}
+              <div className="absolute top-3 right-3 flex items-center gap-1 bg-slate-900/85 backdrop-blur-md px-2 py-1 rounded-xl border border-slate-700/80 shadow-lg z-20">
+                <span className="text-[10px] font-mono text-slate-300 font-semibold px-1 hidden sm:inline" title="Tọa độ và Tỉ lệ phóng to">
+                  {Math.round((subtitleStyle.scale || 1.0) * 100)}% | X:{Math.round(subtitleStyle.x ?? 50)}% Y:{Math.round(subtitleStyle.y ?? 85)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={handleZoomSubOut}
+                  className="p-1 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-lg transition-colors"
+                  title="Thu nhỏ phụ đề (-10%)"
+                >
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleZoomSubIn}
+                  className="p-1 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-lg transition-colors"
+                  title="Phóng to phụ đề (+10%)"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetSubTransform}
+                  className="p-1 hover:bg-slate-700/80 text-slate-300 hover:text-amber-300 rounded-lg transition-colors"
+                  title="Đặt lại vị trí (50%, 85%) và cỡ chuẩn 1.0x"
+                >
+                  <AlignCenter className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Dynamic Live Subtitle Overlay with Free-Form Position & Scale */}
               {activeSubtitle && (
                 <div
-                  className={`absolute left-0 right-0 px-4 pointer-events-none flex justify-center ${
-                    subtitleStyle.position === 'top'
-                      ? 'top-4'
-                      : subtitleStyle.position === 'middle'
-                      ? 'top-1/2 -translate-y-1/2'
-                      : 'bottom-8'
+                  style={{
+                    left: `${
+                      subtitleStyle.position === 'top'
+                        ? 50
+                        : subtitleStyle.position === 'middle'
+                        ? 50
+                        : subtitleStyle.position === 'bottom'
+                        ? 50
+                        : (subtitleStyle.x ?? 50)
+                    }%`,
+                    top: `${
+                      subtitleStyle.position === 'top'
+                        ? 12
+                        : subtitleStyle.position === 'middle'
+                        ? 50
+                        : subtitleStyle.position === 'bottom'
+                        ? 85
+                        : (subtitleStyle.y ?? 85)
+                    }%`,
+                    transform: `translate(-50%, -50%) scale(${subtitleStyle.scale || 1.0})`,
+                    maxWidth: `${subtitleStyle.maxWidthPercent || 90}%`,
+                    fontSize: `${subtitleStyle.fontSize}px`,
+                    color: subtitleStyle.color,
+                    backgroundColor: subtitleStyle.bgColor,
+                    textShadow: subtitleStyle.stroke
+                      ? '0 0 4px #000, 0 0 8px #000, 1px 1px 2px #000'
+                      : 'none',
+                    cursor: isDraggingSub ? 'grabbing' : 'grab'
+                  }}
+                  onPointerDown={handleSubtitlePointerDown}
+                  className={`absolute z-10 select-none text-center font-bold px-3 py-1.5 rounded-lg leading-snug backdrop-blur-xs group/sub transition-shadow ${
+                    isDraggingSub
+                      ? 'ring-2 ring-violet-400 ring-dashed shadow-2xl bg-black/85'
+                      : 'hover:ring-1 hover:ring-violet-400/80'
                   }`}
+                  title="Bấm giữ và kéo để di chuyển phụ đề tự do đến bất kỳ đâu trên video!"
                 >
-                  <div
-                    style={{
-                      fontSize: `${subtitleStyle.fontSize}px`,
-                      color: subtitleStyle.color,
-                      backgroundColor: subtitleStyle.bgColor,
-                      textShadow: subtitleStyle.stroke
-                        ? '0 0 4px #000, 0 0 8px #000, 1px 1px 2px #000'
-                        : 'none'
-                    }}
-                    className="max-w-[90%] text-center font-bold px-3 py-1.5 rounded-lg leading-snug transition-all animate-in fade-in duration-150 backdrop-blur-xs"
-                  >
-                    {activeSubtitle.text}
+                  {activeSubtitle.text}
+                  {/* Floating drag handle indicator */}
+                  <div className="opacity-0 group-hover/sub:opacity-100 transition-opacity absolute -top-2.5 -right-2.5 bg-violet-600 text-white rounded-full p-1 shadow-md pointer-events-none flex items-center justify-center">
+                    <Move className="w-2.5 h-2.5" />
                   </div>
                 </div>
               )}
 
-              {/* Speaking Indicator Badge */}
+              {/* Speaking Indicator Badge with Smart Gender Recognition */}
               {isSpeaking && (
-                <div className="absolute top-3 left-3 bg-violet-600/90 text-white text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-lg animate-pulse backdrop-blur-sm">
+                <div className="absolute top-3 left-3 bg-violet-600/95 text-white text-[11px] font-semibold px-3 py-1.5 rounded-full flex items-center gap-2 shadow-xl animate-pulse backdrop-blur-md border border-violet-400/30 z-20">
+                  <span className={`w-2 h-2 rounded-full ${currentSpeakerInfo?.gender === 'female' ? 'bg-rose-400' : 'bg-blue-400'} animate-ping`} />
                   <Mic className="w-3.5 h-3.5" />
-                  <span>AI Đang Lồng Tiếng...</span>
+                  <span>
+                    AI Lồng Tiếng:{' '}
+                    <strong className={currentSpeakerInfo?.gender === 'female' ? 'text-rose-200' : 'text-blue-200'}>
+                      {currentSpeakerInfo?.gender === 'female' ? '♀️ Giọng Nữ' : '♂️ Giọng Nam'}
+                    </strong>
+                    {currentSpeakerInfo?.voice ? ` (${currentSpeakerInfo.voice})` : ''}
+                  </span>
                 </div>
               )}
             </div>
@@ -1149,11 +1451,28 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
                   </div>
                 </div>
 
-                {/* Subtitle list controls */}
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-xs font-semibold text-slate-300">
-                    Dòng phụ đề ({subtitles.length})
-                  </span>
+                {/* Subtitle list controls & AI Auto-Detect Genders */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-300">
+                      Dòng phụ đề ({subtitles.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleAutoDetectAllGenders}
+                      disabled={isDetectingGenders || subtitles.length === 0}
+                      className="px-2 py-0.5 bg-violet-950/70 hover:bg-violet-900/80 border border-violet-600/50 text-violet-300 hover:text-white rounded-lg text-[11px] font-medium flex items-center gap-1 transition-all disabled:opacity-50"
+                      title="AI tự động phân biệt lời thoại Nam / Nữ cho từng câu"
+                    >
+                      {isDetectingGenders ? (
+                        <RefreshCw className="w-3 h-3 animate-spin text-violet-400" />
+                      ) : (
+                        <Sparkles className="w-3 h-3 text-amber-400" />
+                      )}
+                      <span>AI Phân Vai Nam/Nữ</span>
+                    </button>
+                  </div>
+
                   <button
                     onClick={handleAddSubtitle}
                     className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors"
@@ -1172,6 +1491,7 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
                   ) : (
                     subtitles.map((sub, index) => {
                       const isActive = activeSubtitle?.id === sub.id;
+                      const currentGender = getEffectiveGender(sub, index);
                       return (
                         <div
                           key={sub.id || index}
@@ -1181,9 +1501,9 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
                               : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
                           }`}
                         >
-                          {/* Timing header */}
+                          {/* Timing & Speaker Gender Header */}
                           <div className="flex items-center justify-between gap-2 text-[11px]">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-mono text-slate-500 text-[10px]">#{index + 1}</span>
                               <div className="flex items-center gap-1 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800 font-mono text-slate-300">
                                 <input
@@ -1207,6 +1527,46 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
                                 />
                                 <span className="text-[10px] text-slate-500">giây</span>
                               </div>
+
+                              {/* Speaker Gender Selector */}
+                              <div className="flex items-center bg-slate-950 rounded-md border border-slate-800 p-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateSubtitle(sub.id, 'speakerGender', 'male')}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors flex items-center gap-0.5 ${
+                                    sub.speakerGender === 'male'
+                                      ? 'bg-blue-600 text-white shadow-xs'
+                                      : 'text-slate-400 hover:text-blue-300'
+                                  }`}
+                                  title="Gán giọng đọc Nam"
+                                >
+                                  <span>♂️ Nam</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateSubtitle(sub.id, 'speakerGender', 'female')}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors flex items-center gap-0.5 ${
+                                    sub.speakerGender === 'female'
+                                      ? 'bg-rose-600 text-white shadow-xs'
+                                      : 'text-slate-400 hover:text-rose-300'
+                                  }`}
+                                  title="Gán giọng đọc Nữ"
+                                >
+                                  <span>♀️ Nữ</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateSubtitle(sub.id, 'speakerGender', 'auto')}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] transition-colors ${
+                                    !sub.speakerGender || sub.speakerGender === 'auto'
+                                      ? 'bg-violet-900/60 text-violet-200 border border-violet-700/50'
+                                      : 'text-slate-500 hover:text-slate-300'
+                                  }`}
+                                  title={`Tự động nhận diện: đang là giọng ${currentGender === 'female' ? 'Nữ' : 'Nam'}`}
+                                >
+                                  <span>⚡ Tự động ({currentGender === 'female' ? 'Nữ' : 'Nam'})</span>
+                                </button>
+                              </div>
                             </div>
 
                             <div className="flex items-center gap-1">
@@ -1221,9 +1581,9 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
 
                               {/* Speak this sub with AI */}
                               <button
-                                onClick={() => playOrSpeakText(sub.text)}
+                                onClick={() => playOrSpeakText(sub.text, null, sub, index)}
                                 className="p-1 hover:bg-slate-800 text-slate-400 hover:text-violet-400 rounded"
-                                title="Nghe thử câu này bằng giọng AI"
+                                title={`Nghe thử câu này bằng giọng AI (${currentGender === 'female' ? 'Nữ' : 'Nam'})`}
                               >
                                 <Mic className="w-3 h-3" />
                               </button>
@@ -1357,39 +1717,152 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
                       })()}
                     </div>
 
-                    {/* Gemini Voice Persona */}
-                    <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-800">
-                      <label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
-                        <Headphones className="w-3.5 h-3.5 text-violet-400" />
-                        Chất giọng AI (Persona):
-                      </label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {GEMINI_VOICES.map((v) => {
-                          const isSel = geminiVoice === v.id;
-                          return (
-                            <button
-                              key={v.id}
-                              type="button"
-                              onClick={() => setGeminiVoice(v.id)}
-                              className={`p-2 rounded-xl border text-left flex flex-col gap-0.5 transition-all ${
-                                isSel
-                                  ? 'bg-violet-950/50 border-violet-500 shadow-md'
-                                  : 'bg-slate-950 border-slate-800 hover:border-slate-700'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between">
-                                <span className={`text-xs font-bold ${isSel ? 'text-violet-300' : 'text-slate-300'}`}>
-                                  {v.name}
-                                </span>
-                                <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">
-                                  {v.tag}
-                                </span>
-                              </div>
-                              <span className="text-[10px] text-slate-400">{v.desc}</span>
-                            </button>
-                          );
-                        })}
+                    {/* Gemini Voice Configuration: Dual Gender vs Single Voice */}
+                    <div className="flex flex-col gap-2 pt-2 border-t border-slate-800">
+                      {/* Gender Auto Detect Toggle */}
+                      <div className="flex items-center justify-between p-2.5 bg-slate-950 rounded-xl border border-violet-900/40">
+                        <div>
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-violet-300">
+                            <Users className="w-3.5 h-3.5 text-violet-400" />
+                            <span>Tự Động Phân Biệt Giọng Nam / Nữ</span>
+                            <span className="text-[10px] bg-violet-500/20 text-violet-300 border border-violet-500/40 px-1.5 py-0.2 rounded-full">
+                              Thông minh
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            AI tự nhận diện lời thoại nhân vật để lồng giọng Nam hoặc Nữ tương ứng
+                          </p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={autoGenderDetect}
+                            onChange={(e) => setAutoGenderDetect(e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-violet-600"></div>
+                        </label>
                       </div>
+
+                      {autoGenderDetect ? (
+                        /* Dual Voice Selection (Male + Female) */
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                          {/* Male Voice Selector */}
+                          <div className="bg-slate-950 p-2.5 rounded-xl border border-blue-900/40 flex flex-col gap-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-blue-300 flex items-center gap-1">
+                                <User className="w-3.5 h-3.5 text-blue-400" />
+                                ♂️ Giọng Đọc Nam:
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handlePreviewVoice('Xin chào! Đây là chất giọng đọc Nam trầm ấm từ Gemini.', 'male')}
+                                className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-0.5"
+                                title="Nghe thử giọng Nam"
+                              >
+                                <Volume2 className="w-3 h-3" />
+                                <span>Thử</span>
+                              </button>
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                              {GEMINI_MALE_VOICES.map((v) => (
+                                <button
+                                  key={v.id}
+                                  type="button"
+                                  onClick={() => setGeminiMaleVoice(v.id)}
+                                  className={`p-2 rounded-lg border text-left transition-all flex flex-col gap-0.5 ${
+                                    geminiMaleVoice === v.id
+                                      ? 'bg-blue-950/60 border-blue-500 shadow-xs'
+                                      : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className={`text-[11px] font-bold ${geminiMaleVoice === v.id ? 'text-blue-200' : 'text-slate-300'}`}>
+                                      {v.name}
+                                    </span>
+                                    <span className="text-[9px] bg-slate-800 text-slate-400 px-1 py-0.2 rounded">
+                                      {v.tag}
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 line-clamp-1">{v.desc}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Female Voice Selector */}
+                          <div className="bg-slate-950 p-2.5 rounded-xl border border-rose-900/40 flex flex-col gap-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-rose-300 flex items-center gap-1">
+                                <User className="w-3.5 h-3.5 text-rose-400" />
+                                ♀️ Giọng Đọc Nữ:
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handlePreviewVoice('Xin chào! Đây là chất giọng đọc Nữ trong trẻo từ Gemini.', 'female')}
+                                className="text-[10px] text-rose-400 hover:text-rose-300 flex items-center gap-0.5"
+                                title="Nghe thử giọng Nữ"
+                              >
+                                <Volume2 className="w-3 h-3" />
+                                <span>Thử</span>
+                              </button>
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                              {GEMINI_FEMALE_VOICES.map((v) => (
+                                <button
+                                  key={v.id}
+                                  type="button"
+                                  onClick={() => setGeminiFemaleVoice(v.id)}
+                                  className={`p-2 rounded-lg border text-left transition-all flex flex-col gap-0.5 ${
+                                    geminiFemaleVoice === v.id
+                                      ? 'bg-rose-950/60 border-rose-500 shadow-xs'
+                                      : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className={`text-[11px] font-bold ${geminiFemaleVoice === v.id ? 'text-rose-200' : 'text-slate-300'}`}>
+                                      {v.name}
+                                    </span>
+                                    <span className="text-[9px] bg-slate-800 text-slate-400 px-1 py-0.2 rounded">
+                                      {v.tag}
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 line-clamp-1">{v.desc}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Single Voice Mode */
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {GEMINI_VOICES.map((v) => {
+                            const isSel = geminiVoice === v.id;
+                            return (
+                              <button
+                                key={v.id}
+                                type="button"
+                                onClick={() => setGeminiVoice(v.id)}
+                                className={`p-2 rounded-xl border text-left flex flex-col gap-0.5 transition-all ${
+                                  isSel
+                                    ? 'bg-violet-950/50 border-violet-500 shadow-md'
+                                    : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className={`text-xs font-bold ${isSel ? 'text-violet-300' : 'text-slate-300'}`}>
+                                    {v.name}
+                                  </span>
+                                  <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">
+                                    {v.tag}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] text-slate-400">{v.desc}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1397,27 +1870,82 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
                 {/* ENGINE 2: BROWSER WEB SPEECH SETTINGS */}
                 {dubbingEngine === 'browser' && (
                   <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3 sm:p-3.5 flex flex-col gap-3">
-                    {/* Voice Selection */}
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-semibold text-slate-300">
-                        Chọn giọng đọc máy (Tiếng Việt):
+                    {/* Auto Gender Detect Toggle for Browser */}
+                    <div className="flex items-center justify-between p-2.5 bg-slate-950 rounded-xl border border-slate-800">
+                      <div>
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-200">
+                          <Users className="w-3.5 h-3.5 text-violet-400" />
+                          <span>Tự Động Phân Biệt Giọng Nam / Nữ</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          Tự động điều chỉnh cao độ và chọn giọng phù hợp cho từng nhân vật
+                        </p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={autoGenderDetect}
+                          onChange={(e) => setAutoGenderDetect(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-violet-600"></div>
                       </label>
-                      <select
-                        value={selectedVoiceURI}
-                        onChange={(e) => setSelectedVoiceURI(e.target.value)}
-                        className="bg-slate-950 border border-slate-700 text-white text-xs rounded-xl p-2.5 focus:outline-none focus:border-violet-500"
-                      >
-                        {availableVoices.length === 0 ? (
-                          <option value="">Giọng đọc mặc định hệ thống (Tiếng Việt)</option>
-                        ) : (
-                          availableVoices.map((v) => (
-                            <option key={v.voiceURI} value={v.voiceURI}>
-                              {v.name} ({v.lang})
-                            </option>
-                          ))
-                        )}
-                      </select>
                     </div>
+
+                    {/* Dual or Single Browser Voice Selection */}
+                    {autoGenderDetect ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-semibold text-blue-300">♂️ Giọng Nam Trình Duyệt:</label>
+                          <select
+                            value={browserMaleVoiceURI}
+                            onChange={(e) => setBrowserMaleVoiceURI(e.target.value)}
+                            className="bg-slate-950 border border-blue-900/50 text-white text-xs rounded-xl p-2 focus:outline-none focus:border-blue-500"
+                          >
+                            {availableVoices.map((v) => (
+                              <option key={v.voiceURI} value={v.voiceURI}>
+                                {v.name} ({v.lang})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-semibold text-rose-300">♀️ Giọng Nữ Trình Duyệt:</label>
+                          <select
+                            value={browserFemaleVoiceURI}
+                            onChange={(e) => setBrowserFemaleVoiceURI(e.target.value)}
+                            className="bg-slate-950 border border-rose-900/50 text-white text-xs rounded-xl p-2 focus:outline-none focus:border-rose-500"
+                          >
+                            {availableVoices.map((v) => (
+                              <option key={v.voiceURI} value={v.voiceURI}>
+                                {v.name} ({v.lang})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-semibold text-slate-300">
+                          Chọn giọng đọc máy (Tiếng Việt):
+                        </label>
+                        <select
+                          value={selectedVoiceURI}
+                          onChange={(e) => setSelectedVoiceURI(e.target.value)}
+                          className="bg-slate-950 border border-slate-700 text-white text-xs rounded-xl p-2.5 focus:outline-none focus:border-violet-500"
+                        >
+                          {availableVoices.length === 0 ? (
+                            <option value="">Giọng đọc mặc định hệ thống (Tiếng Việt)</option>
+                          ) : (
+                            availableVoices.map((v) => (
+                              <option key={v.voiceURI} value={v.voiceURI}>
+                                {v.name} ({v.lang})
+                              </option>
+                            ))
+                          )}
+                        </select>
+                      </div>
+                    )}
 
                     {/* Speech rate and pitch */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
@@ -1505,36 +2033,199 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
                   <span>
                     {isGeneratingGeminiAudio
                       ? 'Đang tạo âm thanh Gemini...'
-                      : `Nghe Thử Giọng Đọc (${dubbingEngine === 'gemini' ? `Gemini ${geminiVoice}` : 'Trình Duyệt'})`}
+                      : `Nghe Thử Giọng Đọc (${dubbingEngine === 'gemini' ? (autoGenderDetect ? `Gemini ♂️${geminiMaleVoice} & ♀️${geminiFemaleVoice}` : `Gemini ${geminiVoice}`) : 'Trình Duyệt'})`}
                   </span>
                 </button>
               </div>
             )}
 
-            {/* TAB 3: KIỂU DÁNG PHỤ ĐỀ */}
+            {/* TAB 3: KIỂU DÁNG PHỤ ĐỀ (TỰ DO DI CHUYỂN, PHÓNG TO, THU NHỎ) */}
             {activeTab === 'styling' && (
               <div className="p-3 sm:p-5 flex flex-col gap-4 flex-1 overflow-y-auto">
-                {/* Font Size */}
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-300 font-medium">Cỡ chữ phụ đề:</span>
-                    <span className="font-mono text-violet-400 font-bold">{subtitleStyle.fontSize} px</span>
+                {/* Drag Tip Alert */}
+                <div className="p-3 bg-violet-950/40 border border-violet-700/50 rounded-xl flex items-start gap-2.5 text-xs text-violet-200">
+                  <Move className="w-4 h-4 text-violet-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-white block font-semibold">Tự do di chuyển & kéo thả trực tiếp:</strong>
+                    <span>Bạn có thể dùng chuột hoặc ngón tay bấm giữ và kéo trực tiếp phụ đề trên khung video đến bất kỳ vị trí nào bạn thích!</span>
                   </div>
+                </div>
+
+                {/* Free-form Scaling (Phóng to / Thu nhỏ tự do) */}
+                <div className="bg-slate-900/80 p-3 rounded-xl border border-slate-800 flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-200 font-bold flex items-center gap-1.5">
+                      <Maximize2 className="w-3.5 h-3.5 text-violet-400" />
+                      Phóng To / Thu Nhỏ Tự Do (Scale):
+                    </span>
+                    <span className="font-mono text-violet-400 font-bold text-xs">
+                      {Math.round((subtitleStyle.scale || 1.0) * 100)}% ({subtitleStyle.scale || 1.0}x)
+                    </span>
+                  </div>
+
                   <input
                     type="range"
-                    min={14}
-                    max={34}
-                    step={1}
-                    value={subtitleStyle.fontSize}
+                    min={0.5}
+                    max={2.5}
+                    step={0.05}
+                    value={subtitleStyle.scale || 1.0}
                     onChange={(e) =>
-                      setSubtitleStyle((prev) => ({ ...prev, fontSize: parseInt(e.target.value, 10) }))
+                      setSubtitleStyle((prev) => ({ ...prev, scale: parseFloat(e.target.value) }))
                     }
                     className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
                   />
-                  <div className="flex justify-between text-[10px] text-slate-500">
-                    <span>Nhỏ (14px)</span>
-                    <span>Vừa (20px)</span>
-                    <span>Lớn (34px)</span>
+
+                  {/* Quick Scale Presets */}
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {[
+                      { val: 0.75, label: '0.75x' },
+                      { val: 1.0, label: '1.0x (Chuẩn)' },
+                      { val: 1.25, label: '1.25x' },
+                      { val: 1.5, label: '1.5x' },
+                      { val: 2.0, label: '2.0x' }
+                    ].map((s) => (
+                      <button
+                        key={s.val}
+                        type="button"
+                        onClick={() => setSubtitleStyle((prev) => ({ ...prev, scale: s.val }))}
+                        className={`py-1 px-1 rounded-lg text-[10px] font-medium border text-center transition-colors ${
+                          (subtitleStyle.scale || 1.0) === s.val
+                            ? 'bg-violet-600 border-violet-400 text-white font-bold shadow-xs'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Basic Font Size & Max Width */}
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex justify-between text-[11px] text-slate-400">
+                        <span>Cỡ chữ gốc:</span>
+                        <span className="font-mono text-white font-bold">{subtitleStyle.fontSize}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={12}
+                        max={42}
+                        step={1}
+                        value={subtitleStyle.fontSize}
+                        onChange={(e) =>
+                          setSubtitleStyle((prev) => ({ ...prev, fontSize: parseInt(e.target.value, 10) }))
+                        }
+                        className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <div className="flex justify-between text-[11px] text-slate-400">
+                        <span>Độ rộng tối đa:</span>
+                        <span className="font-mono text-white font-bold">{subtitleStyle.maxWidthPercent || 90}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={30}
+                        max={100}
+                        step={5}
+                        value={subtitleStyle.maxWidthPercent || 90}
+                        onChange={(e) =>
+                          setSubtitleStyle((prev) => ({ ...prev, maxWidthPercent: parseInt(e.target.value, 10) }))
+                        }
+                        className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Free-form Coordinates (Tọa độ X và Y) */}
+                <div className="bg-slate-900/80 p-3 rounded-xl border border-slate-800 flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-200 font-bold flex items-center gap-1.5">
+                      <Move className="w-3.5 h-3.5 text-violet-400" />
+                      Tọa Độ Vị Trí Tự Do (X, Y):
+                    </span>
+                    <span className="font-mono text-violet-400 font-bold text-xs">
+                      X: {Math.round(subtitleStyle.x ?? 50)}% | Y: {Math.round(subtitleStyle.y ?? 85)}%
+                    </span>
+                  </div>
+
+                  {/* Horizontal X Slider */}
+                  <div className="flex flex-col gap-1">
+                    <div className="flex justify-between text-[11px] text-slate-400">
+                      <span>Vị trí ngang (X: Trái → Phải):</span>
+                      <span className="font-mono text-white">{Math.round(subtitleStyle.x ?? 50)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={5}
+                      max={95}
+                      step={1}
+                      value={subtitleStyle.x ?? 50}
+                      onChange={(e) =>
+                        setSubtitleStyle((prev) => ({
+                          ...prev,
+                          position: 'custom',
+                          x: parseInt(e.target.value, 10)
+                        }))
+                      }
+                      className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-400"
+                    />
+                  </div>
+
+                  {/* Vertical Y Slider */}
+                  <div className="flex flex-col gap-1">
+                    <div className="flex justify-between text-[11px] text-slate-400">
+                      <span>Vị trí dọc (Y: Trên → Dưới):</span>
+                      <span className="font-mono text-white">{Math.round(subtitleStyle.y ?? 85)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={5}
+                      max={95}
+                      step={1}
+                      value={subtitleStyle.y ?? 85}
+                      onChange={(e) =>
+                        setSubtitleStyle((prev) => ({
+                          ...prev,
+                          position: 'custom',
+                          y: parseInt(e.target.value, 10)
+                        }))
+                      }
+                      className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-400"
+                    />
+                  </div>
+
+                  {/* Quick Snap Positions */}
+                  <div className="pt-2 border-t border-slate-800 flex flex-col gap-1.5">
+                    <span className="text-[11px] text-slate-400 font-medium">Căn nhanh các vị trí phổ biến:</span>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[
+                        { label: 'Dưới Đáy', x: 50, y: 85, pos: 'bottom' },
+                        { label: 'Ở Giữa', x: 50, y: 50, pos: 'middle' },
+                        { label: 'Phía Trên', x: 50, y: 12, pos: 'top' },
+                        { label: 'Trái Dưới', x: 28, y: 85, pos: 'custom' },
+                        { label: 'Phải Dưới', x: 72, y: 85, pos: 'custom' },
+                        { label: 'Góc Trái Trên', x: 28, y: 15, pos: 'custom' }
+                      ].map((item, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() =>
+                            setSubtitleStyle((prev) => ({
+                              ...prev,
+                              position: 'custom',
+                              x: item.x,
+                              y: item.y
+                            }))
+                          }
+                          className="py-1 px-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white rounded-lg text-[10px] font-medium transition-colors"
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -1581,30 +2272,6 @@ export default function VideoEditorModal({ isOpen, onClose, initialVideo = null,
                         }`}
                       >
                         {bg.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Subtitle Position */}
-                <div className="flex flex-col gap-2">
-                  <span className="text-xs text-slate-300 font-medium">Vị trí hiển thị:</span>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { id: 'bottom', label: 'Dưới đáy' },
-                      { id: 'middle', label: 'Ở giữa' },
-                      { id: 'top', label: 'Phía trên' }
-                    ].map((pos) => (
-                      <button
-                        key={pos.id}
-                        onClick={() => setSubtitleStyle((prev) => ({ ...prev, position: pos.id }))}
-                        className={`py-2 px-2 text-xs rounded-xl border text-center transition-colors ${
-                          subtitleStyle.position === pos.id
-                            ? 'bg-violet-600/30 border-violet-500 text-white font-semibold'
-                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        {pos.label}
                       </button>
                     ))}
                   </div>

@@ -267,17 +267,50 @@ export default function ProductAnalysisModal({
   const handleAutoExtractFrames = async () => {
     setErrorMessage('');
     setIsExtractingFrames(true);
-    setExtractProgress(10);
+    setExtractProgress(5);
 
     const targetCount = extractCount || 12;
 
     try {
+      let currentSource = videoSrc;
+      let currentVid = selectedVideo;
+
+      // If video has no playable source yet but has a bvid, download it first so we can extract frames
+      if (!currentSource && selectedVideo?.bvid) {
+        setExtractProgress(10);
+        try {
+          const dlRes = await axios.post('/api/download/process', {
+            bvid: selectedVideo.bvid,
+            force: false
+          });
+
+          if (dlRes.data?.success && dlRes.data.data) {
+            const dlData = dlRes.data.data;
+            const playableUrl = dlData.downloadUrl
+              ? `${dlData.downloadUrl}${dlData.downloadUrl.includes('?') ? '&' : '?'}inline=true`
+              : `/api/download/file/${encodeURIComponent(dlData.filename)}?inline=true`;
+
+            currentSource = playableUrl;
+            setVideoSrc(playableUrl);
+            currentVid = {
+              ...selectedVideo,
+              id: dlData.id || selectedVideo.bvid,
+              filename: dlData.filename,
+              downloadUrl: playableUrl
+            };
+            setSelectedVideo(currentVid);
+          }
+        } catch (dlErr) {
+          console.warn('Auto-download prior to frame extraction warning:', dlErr);
+        }
+      }
+
       // First try server-side FFmpeg extraction if video exists on server
-      if (selectedVideo?.id && !selectedVideo.isLocal) {
+      if (currentVid?.id && !currentVid.isLocal) {
         try {
           setExtractProgress(30);
           const res = await axios.post('/api/video/extract-frames', {
-            videoId: selectedVideo.id,
+            videoId: currentVid.id,
             frameCount: targetCount
           });
 
@@ -294,15 +327,15 @@ export default function ProductAnalysisModal({
       }
 
       // Browser Canvas extraction fallback
-      if (!videoSrc) {
-        throw new Error('Chưa có nguồn video hợp lệ để cắt khung hình.');
+      if (!currentSource) {
+        throw new Error('Chưa có nguồn video sẵn sàng để cắt khung hình. Hãy dán link/chọn video đã tải về hoặc tải video trực tiếp từ máy tính!');
       }
 
       const tempVideo = document.createElement('video');
       tempVideo.crossOrigin = 'anonymous';
       tempVideo.muted = true;
       tempVideo.preload = 'auto';
-      tempVideo.src = videoSrc;
+      tempVideo.src = currentSource;
 
       await new Promise((resolve, reject) => {
         tempVideo.onloadedmetadata = () => resolve(true);

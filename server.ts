@@ -702,6 +702,22 @@ async function startServer() {
     }
   });
 
+  // 7. AI Speaker Gender Detection (Phân biệt giọng Nam / Nữ theo từng câu thoại)
+  app.post("/api/editor/detect-genders", async (req, res) => {
+    try {
+      const { subtitles, model } = req.body;
+      if (!Array.isArray(subtitles) || subtitles.length === 0) {
+        return res.status(400).json({ success: false, error: "Danh sách phụ đề cần phân tích giới tính không hợp lệ." });
+      }
+
+      const results = await geminiService.detectSpeakerGenders(subtitles, model);
+      return res.json({ success: true, data: results });
+    } catch (err: any) {
+      console.error("[DETECT GENDERS ERROR]:", err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   // Video search & recommendation endpoint
   app.get("/api/videos", async (req, res) => {
     try {

@@ -23,7 +23,8 @@ import {
   SlidersHorizontal,
   Flame,
   Wand2,
-  ShoppingBag
+  ShoppingBag,
+  Scissors
 } from 'lucide-react';
 
 export default function VideoManagerModal({
@@ -754,7 +755,7 @@ export default function VideoManagerModal({
                       <span>Xem ngay</span>
                     </button>
 
-                    {/* Nút Soi Shopee */}
+                    {/* Nút Cắt Khung & Soi Shopee */}
                     {onAnalyzeProducts && (
                       <button
                         type="button"
@@ -763,10 +764,10 @@ export default function VideoManagerModal({
                           onAnalyzeProducts(video);
                         }}
                         className="px-3 py-1.5 bg-orange-500/20 hover:bg-[#ee4d2d] text-orange-300 hover:text-white border border-orange-500/40 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
-                        title="Phân tích sản phẩm trong video để tra cứu Shopee"
+                        title="Cắt video thành các khung hình ảnh & phân tích sản phẩm trên Shopee bằng AI"
                       >
-                        <ShoppingBag className="w-3.5 h-3.5 text-orange-400" />
-                        <span>Soi Shopee</span>
+                        <Scissors className="w-3.5 h-3.5 text-orange-400" />
+                        <span>Cắt Khung & Soi Shopee</span>
                       </button>
                     )}
 
