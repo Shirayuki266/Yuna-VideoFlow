@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import VideoGrid from './components/VideoGrid';
-import SearchBar from './components/SearchBar';
 import SearchFilterBar from './components/SearchFilterBar';
 import LinkDownloader from './components/LinkDownloader';
 import TempFilesModal from './components/TempFilesModal';
@@ -10,7 +9,8 @@ import VideoUploaderModal from './components/VideoUploaderModal';
 import VideoPlayerModal from './components/VideoPlayerModal';
 import StorageMonitorDashboard from './components/StorageMonitorDashboard';
 import VideoEditorModal from './components/VideoEditorModal';
-import { FolderDown, FolderKanban, Upload, Sparkles, CheckCircle2, HardDrive, Wand2 } from 'lucide-react';
+import ProductAnalysisModal from './components/ProductAnalysisModal';
+import { FolderDown, FolderKanban, Upload, Sparkles, CheckCircle2, HardDrive, Wand2, ShoppingBag } from 'lucide-react';
 
 export default function App() {
     const [videos, setVideos] = useState([]);
@@ -33,6 +33,15 @@ export default function App() {
     const [isEditorModalOpen, setIsEditorModalOpen] = useState(false);
     const [editorVideo, setEditorVideo] = useState(null);
     const [playingVideo, setPlayingVideo] = useState(null);
+
+    // Modal Phân tích Sản Phẩm Video & Tra cứu Shopee
+    const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+    const [productModalVideo, setProductModalVideo] = useState(null);
+
+    const handleOpenProductAnalysis = (video = null) => {
+        setProductModalVideo(video);
+        setIsProductModalOpen(true);
+    };
 
     const handleOpenEditor = (video = null) => {
         setEditorVideo(video);
@@ -172,6 +181,18 @@ export default function App() {
         setPage(1);
     };
 
+    // Đặt lại toàn bộ tìm kiếm & bộ lọc, làm mới video khi người dùng không hài lòng
+    const handleMasterReset = () => {
+        setKeyword('');
+        setOrder('totalrank');
+        setTimeRange('all');
+        setVideos([]);
+        setHasMore(true);
+        setPage(1);
+        fetchVideos(1, '', 'totalrank', 'all', true);
+        showToast('Đã đặt lại tìm kiếm & bộ lọc, làm mới danh sách video!');
+    };
+
     // Lắng nghe sự kiện cuộn trang (Infinite Scroll)
     const handleScroll = useCallback(() => {
         if (isLoading || !hasMore) return;
@@ -193,8 +214,9 @@ export default function App() {
             <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-40 px-4 sm:px-6 py-3 flex flex-wrap gap-3 sm:gap-4 justify-between items-center shadow-lg shadow-black/20">
                 <div className="flex items-center gap-3">
                     <h1
-                        onClick={() => handleSearch('')}
+                        onClick={handleMasterReset}
                         className="text-lg sm:text-xl font-bold bg-gradient-to-r from-sky-400 via-blue-400 to-indigo-400 bg-clip-text text-transparent cursor-pointer flex items-center gap-2"
+                        title="Bấm để về trang chủ & làm mới video"
                     >
                         🚀 Yuna-VideoFlow
                     </h1>
@@ -203,22 +225,21 @@ export default function App() {
                     </span>
                 </div>
 
-                {/* Thanh tìm kiếm */}
-                <div className="order-3 sm:order-2 w-full sm:w-auto flex-1 sm:max-w-md">
-                    <SearchBar
-                        onSearch={handleSearch}
-                        initialTerm={keyword}
-                        order={order}
-                        timeRange={timeRange}
-                        onOrderChange={handleOrderChange}
-                        onTimeRangeChange={handleTimeRangeChange}
-                        onResetFilters={handleResetFilters}
-                    />
-                </div>
+                {/* Actions: Chỉnh Sửa Video, Soi Sản Phẩm Shopee, Quản lý Video, Upload Cá Nhân, Tệp tạm */}
+                <div className="flex items-center gap-2 flex-wrap">
+                    {/* 0. Nút Soi Sản Phẩm Shopee AI */}
+                    <button
+                        id="open-product-analysis-btn"
+                        onClick={() => handleOpenProductAnalysis()}
+                        className="px-3 py-1.5 bg-gradient-to-r from-orange-600 via-amber-600 to-orange-500 hover:from-orange-500 hover:to-amber-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md shadow-orange-950/40 ring-1 ring-orange-400/30 active:scale-95 cursor-pointer"
+                        title="Phân tích sản phẩm trong video để tra cứu thông tin & tìm kiếm Shopee với độ tương quan cao"
+                    >
+                        <ShoppingBag className="w-4 h-4 text-amber-200" />
+                        <span className="hidden sm:inline">Soi Shopee AI</span>
+                        <span className="sm:hidden">Shopee</span>
+                    </button>
 
-                {/* Actions: Chỉnh Sửa Video, Quản lý Video, Upload Cá Nhân, Tệp tạm */}
-                <div className="order-2 sm:order-3 flex items-center gap-2">
-                    {/* 0. Nút Chỉnh Sửa Video (Vietsub & Lồng Tiếng AI) */}
+                    {/* 1. Nút Chỉnh Sửa Video (Vietsub & Lồng Tiếng AI) */}
                     <button
                         id="open-video-editor-btn"
                         onClick={() => handleOpenEditor()}
@@ -230,7 +251,7 @@ export default function App() {
                         <span className="sm:hidden">Studio</span>
                     </button>
 
-                    {/* 1. Nút Quản lý Video */}
+                    {/* 2. Nút Quản lý Video */}
                     <button
                         id="open-video-manager-btn"
                         onClick={() => setIsManagerModalOpen(true)}
@@ -246,7 +267,7 @@ export default function App() {
                         )}
                     </button>
 
-                    {/* 2. Nút Upload Video Cá Nhân */}
+                    {/* 3. Nút Upload Video Cá Nhân */}
                     <button
                         id="open-video-uploader-btn"
                         onClick={() => setIsUploaderModalOpen(true)}
@@ -305,17 +326,20 @@ export default function App() {
                 <LinkDownloader
                     onDownloadSuccess={handleDownloadSuccess}
                     onPlayVideo={setPlayingVideo}
+                    onAnalyzeProducts={handleOpenProductAnalysis}
                 />
 
-                {/* 2. Bộ Lọc Tìm Kiếm & Sắp Xếp: Mới nhất, Theo view, Trong ngày, Trong tuần, Trong tháng, Trong năm */}
+                {/* 2. Thanh Tìm Kiếm, Bộ Lọc & Sắp Xếp Video (Tích Hợp Cùng Nút Reset) */}
                 <SearchFilterBar
+                    keyword={keyword}
+                    onSearch={handleSearch}
                     order={order}
                     timeRange={timeRange}
                     onOrderChange={handleOrderChange}
                     onTimeRangeChange={handleTimeRangeChange}
                     onResetFilters={handleResetFilters}
+                    onMasterReset={handleMasterReset}
                     totalResults={videos.length}
-                    keyword={keyword}
                     isLoading={isLoading}
                 />
 
@@ -333,12 +357,13 @@ export default function App() {
                     </span>
                 </div>
 
-                {/* 4. Lưới video (có nút kiểm tra trùng lặp & tải trực tiếp từng video) */}
+                {/* 4. Lưới video (có nút kiểm tra trùng lặp & tải trực tiếp từng video, nút Soi Shopee) */}
                 <VideoGrid
                     videos={videos}
                     isLoading={isLoading}
                     onDownloadSuccess={handleDownloadSuccess}
                     onPlayVideo={setPlayingVideo}
+                    onAnalyzeProducts={handleOpenProductAnalysis}
                 />
             </main>
 
@@ -350,6 +375,7 @@ export default function App() {
                 onOpenEditor={handleOpenEditor}
                 onOpenUploader={() => setIsUploaderModalOpen(true)}
                 onListChange={() => refreshCounts()}
+                onAnalyzeProducts={handleOpenProductAnalysis}
             />
 
             {/* 2. Modal Tải Lên Video Cá Nhân */}
@@ -364,6 +390,7 @@ export default function App() {
                 video={playingVideo}
                 onClose={() => setPlayingVideo(null)}
                 onOpenEditor={handleOpenEditor}
+                onAnalyzeProducts={handleOpenProductAnalysis}
             />
 
             {/* 4. Modal Quản lý Tệp tạm thời (Xóa tệp tạm thời 5 tiếng) */}
@@ -399,6 +426,17 @@ export default function App() {
                     onVideoEdited={() => refreshCounts()}
                 />
             )}
+
+            {/* 7. Modal Phân Tích Sản Phẩm Video & Tra Cứu Shopee AI */}
+            <ProductAnalysisModal
+                isOpen={isProductModalOpen}
+                onClose={() => {
+                    setIsProductModalOpen(false);
+                    setProductModalVideo(null);
+                }}
+                initialVideo={productModalVideo}
+                allVideos={videos}
+            />
         </div>
     );
 }

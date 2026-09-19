@@ -20,6 +20,8 @@ export interface VideoMetadata {
   author: string;
   play: number;
   pubdate: number;
+  desc?: string;
+  tags?: string[];
 }
 
 export interface DownloadResult {

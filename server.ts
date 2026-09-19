@@ -11,6 +11,7 @@ import { VideoStore } from "./server/videoStore";
 import { StorageService } from "./server/storageService";
 import { TelegramService } from "./server/telegramService";
 import { EditorService } from "./server/editorService";
+import { FrameExtractorService } from "./server/frameExtractorService";
 
 dotenv.config();
 
@@ -19,13 +20,18 @@ async function startServer() {
   const PORT = 3000;
   const geminiService = new GeminiService();
 
-  // Initialize download service, upload service, and stores
+  // Initialize download service, upload service, frame extractor, and stores
   DownloadService.init();
   UploadService.init();
+  FrameExtractorService.init();
 
   const uploader = UploadService.getMulterStorage();
 
-  app.use(express.json());
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+
+  // Static serving for temporary extracted frames
+  app.use("/temp_frames", express.static(FrameExtractorService.FRAMES_DIR));
 
   // Health endpoint
   app.get("/api/health", (_req, res) => {
@@ -70,6 +76,154 @@ async function startServer() {
     } catch (err: any) {
       console.error("[API VIDEO RESOLVE ERROR]:", err);
       return res.status(500).json({ error: err.message || "Lỗi khi phân tích thông tin video." });
+    }
+  });
+
+  // Analyze video to identify products & correlate Shopee + internet search
+  app.post("/api/video/analyze-products", async (req, res) => {
+    try {
+      let title = String(req.body.title || "").trim();
+      let titleVi = String(req.body.titleVi || "").trim();
+      let description = String(req.body.description || "").trim();
+      let author = String(req.body.author || "").trim();
+      let coverUrl = String(req.body.coverUrl || req.body.cover || "").trim();
+      let localThumbPath = String(req.body.localThumbPath || "").trim();
+      let tags: string[] = Array.isArray(req.body.tags) ? req.body.tags : [];
+
+      const linkOrBvid = String(req.body.link || req.body.bvid || "").trim();
+      const extractedBvid = DownloadService.extractBvid(linkOrBvid);
+
+      if (extractedBvid && (!title || !coverUrl)) {
+        try {
+          const meta = await DownloadService.getVideoMetadata(extractedBvid, geminiService);
+          if (meta) {
+            if (!title) title = meta.title;
+            if (!titleVi) titleVi = meta.title_vi;
+            if (!description) description = meta.desc || "";
+            if (!author) author = meta.author || "";
+            if (!coverUrl) coverUrl = meta.cover || "";
+            if (meta.tags && meta.tags.length > 0) tags = meta.tags;
+          }
+        } catch (metaErr: any) {
+          console.warn("[PRODUCT RESOLVE BVID WARN]:", metaErr?.message || metaErr);
+        }
+      }
+
+      if (req.body.videoId) {
+        const stored = VideoStore.getVideo(String(req.body.videoId));
+        if (stored) {
+          if (!title) title = stored.title;
+          if (!titleVi) titleVi = stored.title_vi;
+          if (!author) author = stored.author || "";
+          if (!coverUrl && stored.cover) coverUrl = stored.cover;
+          if (!localThumbPath && stored.thumbnailPath) localThumbPath = stored.thumbnailPath;
+        }
+      }
+
+      if (!title && !titleVi) {
+        return res.status(400).json({ error: "Vui lòng cung cấp tiêu đề hoặc liên kết video để phân tích sản phẩm." });
+      }
+
+      const frameImage = req.body.frameImage;
+      const frameTimestamp = req.body.frameTimestamp ? Number(req.body.frameTimestamp) : undefined;
+      const frameTimestampStr = req.body.frameTimestampStr;
+
+      console.log(`[API PRODUCT ANALYSIS] Analyzing video products for: "${titleVi || title}" ${frameTimestampStr ? `(Frame: ${frameTimestampStr})` : ""}...`);
+      const analysis = await geminiService.analyzeVideoProducts({
+        title,
+        titleVi,
+        description,
+        author,
+        coverUrl,
+        localThumbPath,
+        frameImage,
+        frameTimestamp,
+        frameTimestampStr,
+        tags,
+        model: req.body.model
+      });
+
+      return res.json({ success: true, data: analysis });
+    } catch (err: any) {
+      console.warn("[API PRODUCT ANALYSIS NOTICE]:", err?.message || err);
+      const fallback = geminiService.generateFallbackProductAnalysis({
+        title: req.body.title || "",
+        titleVi: req.body.titleVi,
+        coverUrl: req.body.coverUrl,
+        description: req.body.description,
+        author: req.body.author,
+        frameTimestampStr: req.body.frameTimestampStr,
+        frameImage: req.body.frameImage
+      });
+      return res.json({ success: true, data: fallback });
+    }
+  });
+
+  // Extract keyframe image series from video
+  app.post("/api/video/extract-frames", async (req, res) => {
+    try {
+      const { videoId, videoPath: rawPath, frameCount, intervalSeconds, customTimestamps } = req.body;
+      let targetPath = rawPath;
+
+      if (!targetPath && videoId) {
+        targetPath = FrameExtractorService.resolveLocalVideoPath(videoId);
+      }
+
+      if (!targetPath || !fs.existsSync(targetPath)) {
+        return res.status(404).json({
+          error: "Không tìm thấy tệp video trên máy chủ để cắt khung hình. Bạn có thể sử dụng tính năng trích xuất khung hình trực tiếp bằng Trình duyệt (HTML5 Canvas)!"
+        });
+      }
+
+      console.log(`[FRAME EXTRACTION] Extracting frames for video: ${targetPath} (Count: ${frameCount || 12})...`);
+      const frames = await FrameExtractorService.extractFrames({
+        videoPath: targetPath,
+        frameCount: frameCount ? Number(frameCount) : 12,
+        intervalSeconds: intervalSeconds ? Number(intervalSeconds) : undefined,
+        customTimestamps: Array.isArray(customTimestamps) ? customTimestamps : undefined
+      });
+
+      return res.json({
+        success: true,
+        count: frames.length,
+        frames
+      });
+    } catch (err: any) {
+      console.warn("[FRAME EXTRACTION ERROR]:", err?.message || err);
+      return res.status(500).json({
+        error: err.message || "Lỗi khi trích xuất khung hình từ video."
+      });
+    }
+  });
+
+  // Capture a single frame from video at a specific timestamp
+  app.post("/api/video/capture-frame", async (req, res) => {
+    try {
+      const { videoId, videoPath: rawPath, timestamp } = req.body;
+      let targetPath = rawPath;
+
+      if (!targetPath && videoId) {
+        targetPath = FrameExtractorService.resolveLocalVideoPath(videoId);
+      }
+
+      if (!targetPath || !fs.existsSync(targetPath)) {
+        return res.status(404).json({
+          error: "Không tìm thấy tệp video trên máy chủ để chụp khung hình."
+        });
+      }
+
+      const ts = typeof timestamp === "number" ? timestamp : parseFloat(timestamp) || 1;
+      const frame = await FrameExtractorService.captureSingleFrame(targetPath, ts);
+
+      return res.json({
+        success: true,
+        frame
+      });
+    } catch (err: any) {
+      console.warn("[FRAME CAPTURE ERROR]:", err?.message || err);
+      return res.status(500).json({
+        error: err.message || "Lỗi khi chụp khung hình từ video."
+      });
     }
   });
 
@@ -204,7 +358,7 @@ async function startServer() {
   });
 
   // Upload personal video
-  app.post("/api/upload/video", uploader.single("video"), async (req, res) => {
+  app.post("/api/upload/video", uploader.single("video") as any, async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "Vui lòng chọn một tệp video để tải lên." });

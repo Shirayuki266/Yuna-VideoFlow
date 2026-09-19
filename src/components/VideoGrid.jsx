@@ -2,7 +2,7 @@ import React from 'react';
 import VideoCard from './VideoCard';
 import SkeletonCard from './SkeletonCard';
 
-export default function VideoGrid({ videos = [], isLoading = false, onDownloadSuccess, onPlayVideo }) {
+export default function VideoGrid({ videos = [], isLoading = false, onDownloadSuccess, onPlayVideo, onAnalyzeProducts }) {
     const hasVideos = videos && videos.length > 0;
 
     return (
@@ -27,6 +27,7 @@ export default function VideoGrid({ videos = [], isLoading = false, onDownloadSu
                         video={video}
                         onDownloadSuccess={onDownloadSuccess}
                         onPlayVideo={onPlayVideo}
+                        onAnalyzeProducts={onAnalyzeProducts}
                     />
                 ))}
 

@@ -22,6 +22,7 @@ export interface StoredVideo {
   author?: string;
   filename: string;
   filePath: string;
+  thumbnailPath?: string;
   downloadUrl: string;
   streamUrl: string;
   fileSizeBytes: number;

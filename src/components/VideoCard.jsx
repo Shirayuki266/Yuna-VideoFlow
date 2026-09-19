@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { Download, Loader2, CheckCircle2, AlertCircle, ExternalLink, Play, RotateCw, Check } from 'lucide-react';
+import { Download, Loader2, CheckCircle2, AlertCircle, ExternalLink, Play, RotateCw, Check, ShoppingBag } from 'lucide-react';
 
 // Helper format lượt xem
 function formatViews(views) {
@@ -34,7 +34,7 @@ function formatPubDate(pubdate) {
   return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-export default function VideoCard({ video, onDownloadSuccess, onPlayVideo }) {
+export default function VideoCard({ video, onDownloadSuccess, onPlayVideo, onAnalyzeProducts }) {
   const [downloadState, setDownloadState] = useState('idle'); // 'idle' | 'checking' | 'downloading' | 'already_downloaded' | 'success' | 'error'
   const [downloadInfo, setDownloadInfo] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
@@ -133,10 +133,22 @@ export default function VideoCard({ video, onDownloadSuccess, onPlayVideo }) {
             loading="lazy"
             referrerPolicy="no-referrer"
           />
-          <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
             <span className="bg-black/70 text-white text-xs px-2.5 py-1 rounded-full flex items-center gap-1 backdrop-blur-sm">
               <ExternalLink className="w-3 h-3" /> Xem gốc
             </span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onAnalyzeProducts && onAnalyzeProducts(video);
+              }}
+              className="bg-[#ee4d2d]/90 hover:bg-[#ee4d2d] text-white text-xs px-2.5 py-1 rounded-full flex items-center gap-1 backdrop-blur-sm shadow-md transition-transform hover:scale-105"
+              title="Phân tích sản phẩm trong video để tra cứu Shopee"
+            >
+              <ShoppingBag className="w-3 h-3" /> Soi Shopee
+            </button>
           </div>
         </a>
 
@@ -196,17 +208,35 @@ export default function VideoCard({ video, onDownloadSuccess, onPlayVideo }) {
 
           {/* Video Actions & Duplicate Check Status */}
           <div className="pt-1">
-            {/* Trạng thái 1: Chưa bấm tải */}
+            {/* Trạng thái 1: Chưa bấm tải -> Hiển thị cả Tải MP4 và Soi Hàng Shopee */}
             {downloadState === 'idle' && (
-              <button
-                id={`download-btn-${video.bvid}`}
-                type="button"
-                onClick={(e) => handleDownload(e, false)}
-                className="w-full py-2 px-3 bg-sky-600/20 hover:bg-sky-600 text-sky-300 hover:text-white border border-sky-500/40 hover:border-sky-500 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-sm"
-              >
-                <Download className="w-3.5 h-3.5" />
-                Tải MP4 (Kiểm tra & Tải)
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  id={`download-btn-${video.bvid}`}
+                  type="button"
+                  onClick={(e) => handleDownload(e, false)}
+                  className="w-full py-2 px-2 bg-sky-600/20 hover:bg-sky-600 text-sky-300 hover:text-white border border-sky-500/40 hover:border-sky-500 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition-all shadow-sm truncate"
+                  title="Tải video về máy (Tự động kiểm tra trùng lặp)"
+                >
+                  <Download className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span className="truncate">Tải MP4</span>
+                </button>
+
+                <button
+                  id={`shopee-btn-${video.bvid}`}
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onAnalyzeProducts && onAnalyzeProducts(video);
+                  }}
+                  className="w-full py-2 px-2 bg-orange-500/20 hover:bg-[#ee4d2d] text-orange-300 hover:text-white border border-orange-500/40 hover:border-[#ee4d2d] rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition-all shadow-sm truncate"
+                  title="Phân tích sản phẩm trong video và tra cứu Shopee Việt Nam"
+                >
+                  <ShoppingBag className="w-3.5 h-3.5 flex-shrink-0 text-orange-400" />
+                  <span className="truncate">Soi Shopee</span>
+                </button>
+              </div>
             )}
 
             {/* Trạng thái 2: Đang kiểm tra trước khi tải */}
@@ -239,7 +269,7 @@ export default function VideoCard({ video, onDownloadSuccess, onPlayVideo }) {
                 <div className="p-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-[11px] text-emerald-300 flex items-center justify-between">
                   <span className="flex items-center gap-1 font-medium">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                    Đã tải trước đó ({downloadInfo.formattedSize})
+                    Đã tải ({downloadInfo.formattedSize})
                   </span>
                   <button
                     type="button"
@@ -252,46 +282,74 @@ export default function VideoCard({ video, onDownloadSuccess, onPlayVideo }) {
                   </button>
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="grid grid-cols-3 gap-1.5">
                   <button
                     type="button"
                     onClick={() => onPlayVideo && onPlayVideo(downloadInfo)}
-                    className="flex-1 py-1.5 px-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-colors"
+                    className="py-1.5 px-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-colors"
                   >
                     <Play className="w-3 h-3" />
-                    Xem ngay
+                    Xem
                   </button>
                   <a
                     href={downloadInfo.downloadUrl}
                     download={downloadInfo.filename}
-                    className="flex-1 py-1.5 px-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-colors shadow-sm"
+                    className="py-1.5 px-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-colors shadow-sm"
                   >
                     <Download className="w-3 h-3" />
                     Lưu file
                   </a>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onAnalyzeProducts && onAnalyzeProducts(video);
+                    }}
+                    className="py-1.5 px-2 bg-orange-500/20 hover:bg-[#ee4d2d] text-orange-300 hover:text-white border border-orange-500/30 rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-colors"
+                    title="Soi sản phẩm trên Shopee"
+                  >
+                    <ShoppingBag className="w-3 h-3" />
+                    Shopee
+                  </button>
                 </div>
               </div>
             )}
 
             {/* Trạng thái 5: Tải mới thành công */}
             {downloadState === 'success' && downloadInfo && (
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => onPlayVideo && onPlayVideo(downloadInfo)}
-                  className="py-1.5 px-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-medium flex items-center gap-1 transition-colors"
-                >
-                  <Play className="w-3 h-3" />
-                  Xem
-                </button>
-                <a
-                  href={downloadInfo.downloadUrl}
-                  download={downloadInfo.filename}
-                  className="flex-1 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  Tải xong ({downloadInfo.formattedSize})
-                </a>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onPlayVideo && onPlayVideo(downloadInfo)}
+                    className="py-1.5 px-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-medium flex items-center gap-1 transition-colors"
+                  >
+                    <Play className="w-3 h-3" />
+                    Xem
+                  </button>
+                  <a
+                    href={downloadInfo.downloadUrl}
+                    download={downloadInfo.filename}
+                    className="flex-1 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Tải xong ({downloadInfo.formattedSize})
+                  </a>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onAnalyzeProducts && onAnalyzeProducts(video);
+                    }}
+                    className="py-1.5 px-2.5 bg-orange-500/20 hover:bg-[#ee4d2d] text-orange-300 hover:text-white border border-orange-500/30 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
+                    title="Soi sản phẩm trên Shopee"
+                  >
+                    <ShoppingBag className="w-3.5 h-3.5" />
+                    Shopee
+                  </button>
+                </div>
               </div>
             )}
 

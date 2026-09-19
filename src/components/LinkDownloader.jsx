@@ -10,10 +10,11 @@ import {
   Film,
   Play,
   RotateCw,
-  AlertTriangle
+  AlertTriangle,
+  ShoppingBag
 } from 'lucide-react';
 
-export default function LinkDownloader({ onDownloadSuccess, onPlayVideo }) {
+export default function LinkDownloader({ onDownloadSuccess, onPlayVideo, onAnalyzeProducts }) {
   const [inputUrl, setInputUrl] = useState('');
   const [isResolving, setIsResolving] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -243,7 +244,7 @@ export default function LinkDownloader({ onDownloadSuccess, onPlayVideo }) {
                   </button>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => onPlayVideo && onPlayVideo(existingVideoData)}
@@ -261,27 +262,53 @@ export default function LinkDownloader({ onDownloadSuccess, onPlayVideo }) {
                     <Download className="w-3.5 h-3.5" />
                     Tải lại file đã lưu
                   </a>
+
+                  {onAnalyzeProducts && (
+                    <button
+                      type="button"
+                      onClick={() => onAnalyzeProducts(resolvedVideo || existingVideoData)}
+                      className="px-4 py-2 bg-orange-500/20 hover:bg-[#ee4d2d] text-orange-300 hover:text-white border border-orange-500/40 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow"
+                      title="Phân tích sản phẩm trong video này để tra cứu Shopee"
+                    >
+                      <ShoppingBag className="w-3.5 h-3.5 text-orange-400" />
+                      Soi Shopee
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (
-              <button
-                id="link-downloader-process-btn"
-                onClick={() => handleDownload(false)}
-                disabled={isDownloading}
-                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-400 text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
-              >
-                {isDownloading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Đang tải & ghép (Hình + Tiếng)...
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-4 h-4" />
-                    Tải video đầy đủ (MP4)
-                  </>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  id="link-downloader-process-btn"
+                  onClick={() => handleDownload(false)}
+                  disabled={isDownloading}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-400 text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
+                >
+                  {isDownloading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Đang tải & ghép (Hình + Tiếng)...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4" />
+                      Tải video đầy đủ (MP4)
+                    </>
+                  )}
+                </button>
+
+                {onAnalyzeProducts && (
+                  <button
+                    type="button"
+                    onClick={() => onAnalyzeProducts(resolvedVideo)}
+                    className="px-4 py-2.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-950/40"
+                    title="Phân tích sản phẩm trong video này để tra cứu Shopee"
+                  >
+                    <ShoppingBag className="w-4 h-4 text-amber-200" />
+                    Soi Shopee
+                  </button>
                 )}
-              </button>
+              </div>
             )}
           </div>
         </div>

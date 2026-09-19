@@ -22,7 +22,8 @@ import {
   Filter,
   SlidersHorizontal,
   Flame,
-  Wand2
+  Wand2,
+  ShoppingBag
 } from 'lucide-react';
 
 export default function VideoManagerModal({
@@ -31,7 +32,8 @@ export default function VideoManagerModal({
   onPlayVideo,
   onOpenEditor,
   onOpenUploader,
-  onListChange
+  onListChange,
+  onAnalyzeProducts
 }) {
   const [videos, setVideos] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -751,6 +753,22 @@ export default function VideoManagerModal({
                       <Play className="w-3.5 h-3.5" />
                       <span>Xem ngay</span>
                     </button>
+
+                    {/* Nút Soi Shopee */}
+                    {onAnalyzeProducts && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onAnalyzeProducts(video);
+                        }}
+                        className="px-3 py-1.5 bg-orange-500/20 hover:bg-[#ee4d2d] text-orange-300 hover:text-white border border-orange-500/40 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
+                        title="Phân tích sản phẩm trong video để tra cứu Shopee"
+                      >
+                        <ShoppingBag className="w-3.5 h-3.5 text-orange-400" />
+                        <span>Soi Shopee</span>
+                      </button>
+                    )}
 
                     {/* Nút Tải về máy */}
                     <a

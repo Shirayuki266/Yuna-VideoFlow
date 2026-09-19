@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
-import { X, Download, Film, ExternalLink, Send, HardDrive, Wand2, LogOut } from 'lucide-react';
+import { X, Download, Film, ExternalLink, Send, HardDrive, Wand2, LogOut, ShoppingBag } from 'lucide-react';
 
-export default function VideoPlayerModal({ video, onClose, onOpenEditor }) {
+export default function VideoPlayerModal({ video, onClose, onOpenEditor, onAnalyzeProducts }) {
   const videoRef = useRef(null);
 
   const handleClose = () => {
@@ -96,6 +96,19 @@ export default function VideoPlayerModal({ video, onClose, onOpenEditor }) {
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
+              {onAnalyzeProducts && (
+                <button
+                  id="player-shopee-analysis-btn"
+                  type="button"
+                  onClick={() => onAnalyzeProducts(video)}
+                  className="px-2.5 sm:px-3 py-1.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow"
+                  title="Phân tích sản phẩm trong video này và tra cứu Shopee Việt Nam"
+                >
+                  <ShoppingBag className="w-3.5 h-3.5 text-amber-200" />
+                  <span className="hidden sm:inline">Soi Sản Phẩm Shopee</span>
+                  <span className="sm:hidden">Shopee</span>
+                </button>
+              )}
               {onOpenEditor && (
                 <button
                   type="button"
